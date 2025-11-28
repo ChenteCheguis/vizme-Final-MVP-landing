@@ -21,7 +21,7 @@ const Navbar: React.FC = () => {
             ? 'border-vizme-grey/20 bg-white/80 shadow-lg shadow-vizme-navy/5' 
             : 'border-transparent bg-transparent'
         }`}>
-          {/* Logo Section - Text Only */}
+          {/* Logo Section */}
           <div className="flex flex-col">
             <span className="text-sm font-bold uppercase tracking-[0.2em] text-vizme-navy">Vizme</span>
             <span className="hidden sm:block text-[10px] text-vizme-greyblue">Dashboards e insights</span>

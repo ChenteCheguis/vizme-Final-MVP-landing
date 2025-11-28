@@ -63,7 +63,8 @@ const CTA: React.FC = () => {
             {/* Copy */}
             <div className="md:col-span-3 space-y-6">
               
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-3 mb-2">
+                 {/* REMOVED LOGO HERE */}
                  <span className="text-xs font-bold uppercase tracking-[0.2em] text-vizme-orange">Siguiente Paso</span>
               </div>
               

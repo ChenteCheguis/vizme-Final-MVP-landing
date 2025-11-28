@@ -8,6 +8,7 @@ const Footer: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           
           <div className="flex items-center gap-3">
+             {/* REMOVED LOGO HERE */}
             <div>
               <p className="text-sm font-bold text-white uppercase tracking-widest">Vizme</p>
               <p className="text-xs text-gray-400">Dashboards e insights accionables.</p>

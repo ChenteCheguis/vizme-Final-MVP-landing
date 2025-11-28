@@ -95,9 +95,11 @@
 </head>
 <body>
   <!-- NETLIFY FORM DETECTION (HIDDEN) -->
+  <!-- Crucial: declare all fields here so Netlify knows what to expect -->
   <form name="contact" netlify netlify-honeypot="bot-field" hidden>
     <input type="text" name="name" />
     <input type="email" name="email" />
+    <select name="lada"></select> <!-- Added this field -->
     <input type="tel" name="phone" />
     <select name="profile"></select>
     <input type="hidden" name="form-name" value="contact" />

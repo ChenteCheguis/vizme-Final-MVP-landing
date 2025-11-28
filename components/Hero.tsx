@@ -152,9 +152,12 @@ const Hero: React.FC = () => {
                   
                   {/* Dashboard Header */}
                   <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                    <div>
-                      <h3 className="text-sm font-semibold text-vizme-navy">Vista General: {currentScenario.label}</h3>
-                      <p className="text-[10px] text-vizme-greyblue">Datos actualizados en tiempo real</p>
+                    <div className="flex items-center gap-3">
+                       {/* REMOVED LOGO HERE */}
+                       <div>
+                          <h3 className="text-sm font-semibold text-vizme-navy">Vista General: {currentScenario.label}</h3>
+                          <p className="text-[10px] text-vizme-greyblue">Datos actualizados en tiempo real</p>
+                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="flex h-2 w-2 relative">
