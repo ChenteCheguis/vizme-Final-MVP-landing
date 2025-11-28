@@ -3,16 +3,15 @@ import { ArrowRight, TrendingUp, AlertCircle, Zap, Building2, Users, Palette, Ch
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, CartesianGrid } from 'recharts';
 
 // Data scenarios
-// Colors updated: Empresa is now ORANGE (#F26A3D) as requested.
 const scenarios = {
   empresa: {
     label: "Empresa SaaS",
     color: "#F26A3D", // Orange
     icon: Building2,
     kpis: [
-      { label: "MRR Proyectado", value: "$42.5K", trend: "+12%", trendUp: true, sub: "vs mes anterior" },
-      { label: "Churn Risk", value: "8 Ctas", trend: "Alerta Alta", trendUp: false, sub: "Requiere atención" },
-      { label: "LTV Promedio", value: "$3,200", trend: "Estable", trendUp: true, sub: "Últimos 90 días" }
+      { label: "Ganancia Proyectada", value: "$42.5K", trend: "+12%", trendUp: true, sub: "vs mes anterior" },
+      { label: "Riesgo de pérdida de clientes", value: "8 Ctas", trend: "Alerta Alta", trendUp: false, sub: "Requiere atención" },
+      { label: "Factura Promedio", value: "$3,200", trend: "Estable", trendUp: true, sub: "Últimos 90 días" }
     ],
     insight: "Detectamos que los clientes del plan 'Pro' tienen un 40% más de riesgo de fuga en el mes 4. Lanza una campaña de fidelización el día 90.",
     chartData: [
@@ -71,7 +70,7 @@ const Hero: React.FC = () => {
   return (
     <section className="relative overflow-hidden pt-32 pb-20 lg:pt-40 lg:pb-32 bg-vizme-bg">
       
-      {/* Background Blobs - Cyan & Purple/Red as requested, NO GRID */}
+      {/* Background Blobs */}
       <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-cyan-400/20 blur-[100px] animate-blob mix-blend-multiply"></div>
       <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-purple-400/20 blur-[100px] animate-blob animate-delay-2000 mix-blend-multiply"></div>
 
@@ -90,14 +89,13 @@ const Hero: React.FC = () => {
 
             <h1 className="text-4xl font-semibold tracking-tight text-vizme-navy sm:text-5xl lg:text-6xl leading-[1.1]">
               Decisiones claras <br className="hidden lg:block"/>
-              {/* Text updated to solid Orange */}
               <span className="text-vizme-orange">
                 hechas con datos.
               </span>
             </h1>
 
             <p className="max-w-xl text-lg text-vizme-greyblue leading-relaxed mx-auto lg:mx-0">
-              Vizme no es una herramienta más. Es un <strong>proceso de inteligencia</strong> que limpia tus datos, identifica oportunidades y te muestra, sin adornos, dónde está el verdadero crecimiento.
+              Vizme no es una herramienta más. Es un <strong>proceso de inteligencia</strong> que limpia tus datos, identifica oportunidades y te muestra, sin adornos, dónde está la verdadero crecimiento.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
@@ -154,12 +152,9 @@ const Hero: React.FC = () => {
                   
                   {/* Dashboard Header */}
                   <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                      {/* Logo Container REMOVED as requested */}
-                      <div>
-                        <h3 className="text-sm font-semibold text-vizme-navy">Vista General: {currentScenario.label}</h3>
-                        <p className="text-[10px] text-vizme-greyblue">Datos actualizados en tiempo real</p>
-                      </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-vizme-navy">Vista General: {currentScenario.label}</h3>
+                      <p className="text-[10px] text-vizme-greyblue">Datos actualizados en tiempo real</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="flex h-2 w-2 relative">
@@ -174,7 +169,7 @@ const Hero: React.FC = () => {
                   <div className="grid grid-cols-3 gap-3 mb-6">
                     {currentScenario.kpis.map((kpi, i) => (
                       <div key={i} className="rounded-xl bg-vizme-bg/50 border border-vizme-navy/5 p-3 flex flex-col justify-between hover:border-vizme-navy/10 transition-colors">
-                        <span className="text-[10px] text-vizme-greyblue font-medium uppercase truncate">{kpi.label}</span>
+                        <span className="text-[10px] text-vizme-greyblue font-medium uppercase truncate" title={kpi.label}>{kpi.label}</span>
                         <div className="my-1 overflow-hidden">
                           {/* Mobile Fix: Adjusted font sizes (text-xs sm:text-xl) to fit 'Instagram' */}
                           <span className="text-xs sm:text-xl font-bold text-vizme-navy block tracking-tight truncate" title={kpi.value}>

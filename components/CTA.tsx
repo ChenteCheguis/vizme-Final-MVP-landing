@@ -62,7 +62,11 @@ const CTA: React.FC = () => {
             
             {/* Copy */}
             <div className="md:col-span-3 space-y-6">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-vizme-orange">Siguiente Paso</span>
+              
+              <div className="flex items-center gap-2 mb-2">
+                 <span className="text-xs font-bold uppercase tracking-[0.2em] text-vizme-orange">Siguiente Paso</span>
+              </div>
+              
               <h2 className="text-3xl font-semibold text-white sm:text-4xl">
                 Convierte la incertidumbre en un <span className="text-vizme-red">plan de ataque</span>.
               </h2>

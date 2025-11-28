@@ -21,12 +21,10 @@ const Navbar: React.FC = () => {
             ? 'border-vizme-grey/20 bg-white/80 shadow-lg shadow-vizme-navy/5' 
             : 'border-transparent bg-transparent'
         }`}>
-          {/* Logo - Text Only */}
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col">
-              <span className="text-sm font-bold uppercase tracking-[0.2em] text-vizme-navy">Vizme</span>
-              <span className="hidden sm:block text-[10px] text-vizme-greyblue">Dashboards e insights</span>
-            </div>
+          {/* Logo Section - Text Only */}
+          <div className="flex flex-col">
+            <span className="text-sm font-bold uppercase tracking-[0.2em] text-vizme-navy">Vizme</span>
+            <span className="hidden sm:block text-[10px] text-vizme-greyblue">Dashboards e insights</span>
           </div>
 
           {/* Desktop Nav */}

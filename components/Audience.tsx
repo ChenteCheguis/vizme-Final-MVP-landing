@@ -7,7 +7,7 @@ const personas: (Persona & { icon: any })[] = [
     title: "Empresas & Startups",
     subtitle: "Que buscan rentabilidad.",
     description: "Deja de operar a ciegas. Vizme te muestra qué líneas de negocio generan margen y tu proyección real de cierre.",
-    metrics: ["Forecast de ventas", "Churn prediction", "Eficiencia operativa"],
+    metrics: ["Forecast de ventas", "Predicción de pérdida de clientes", "Eficiencia operativa"],
     gradient: "from-vizme-navy/5 via-vizme-navy/0 to-transparent",
     icon: Building2
   },
