@@ -10,7 +10,7 @@ const scenarios = {
     icon: Building2,
     kpis: [
       { label: "Ganancia Proyectada", value: "$42.5K", trend: "+12%", trendUp: true, sub: "vs mes anterior" },
-      { label: "Riesgo de pérdida de clientes", value: "8 Ctas", trend: "Alerta Alta", trendUp: false, sub: "Requiere atención" },
+      { label: "Perdida de clientes", value: "8 Ctas", trend: "Alerta Alta", trendUp: false, sub: "Requiere atención" },
       { label: "Factura Promedio", value: "$3,200", trend: "Estable", trendUp: true, sub: "Últimos 90 días" }
     ],
     insight: "Detectamos que los clientes del plan 'Pro' tienen un 40% más de riesgo de fuga en el mes 4. Lanza una campaña de fidelización el día 90.",
@@ -95,7 +95,7 @@ const Hero: React.FC = () => {
             </h1>
 
             <p className="max-w-xl text-lg text-vizme-greyblue leading-relaxed mx-auto lg:mx-0">
-              Vizme no es una herramienta más. Es un <strong>proceso de inteligencia</strong> que limpia tus datos, identifica oportunidades y te muestra, sin adornos, dónde está la verdadero crecimiento.
+              La incertidumbre nace de datos sin interpretación. Vizme los depura, aplica IA y te muestra exactamente dónde está el <strong>crecimiento real</strong>.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
