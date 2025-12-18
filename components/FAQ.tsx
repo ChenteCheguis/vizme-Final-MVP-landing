@@ -3,20 +3,20 @@ import { Plus, Minus } from 'lucide-react';
 
 const faqs = [
   {
-    question: "¿Necesito un equipo de ingenieros para usar Vizme?",
-    answer: "No. Vizme está diseñado para ser 'No-Code'. Nosotros nos encargamos de las conexiones complejas (API, SQL, Excel) y te entregamos el dashboard listo. Tú solo te preocupas por leer los insights."
+    question: "¿Necesito conocimientos técnicos para usar Vizme?",
+    answer: "Para nada. Nosotros nos encargamos de la ingeniería de datos. Tú recibes una interfaz limpia y reportes en lenguaje humano para que te enfoques en decidir, no en programar."
   },
   {
-    question: "¿Mis datos están seguros?",
-    answer: "Absolutamente. Utilizamos encriptación AES-256 de nivel bancario y nunca vendemos tus datos a terceros. Firmamos acuerdos de confidencialidad (NDA) con cada cliente antes de empezar."
+    question: "¿Cómo garantizan la seguridad de mi información?",
+    answer: "La seguridad es nuestra prioridad. Utilizamos protocolos de encriptación de grado bancario y firmamos acuerdos legales de confidencialidad (NDA) antes de tocar cualquier dato."
   },
   {
-    question: "¿Con qué plataformas se integran?",
-    answer: "Conectamos con casi todo: Meta Ads, Google Analytics, Shopify, HubSpot, Salesforce, hojas de cálculo de Google/Excel y bases de datos SQL. Si tiene una API, podemos conectarlo."
+    question: "¿Qué fuentes de datos pueden conectar?",
+    answer: "Desde simples Excel y Google Sheets hasta infraestructuras complejas como Salesforce, Shopify, Google Ads, Meta Business Suite y bases de datos SQL propias."
   },
   {
-    question: "¿Cuánto tarda la implementación?",
-    answer: "Nuestro proceso de 'Piloto Rápido' toma entre 48 y 72 horas para tener tu primer dashboard funcional con datos históricos reales."
+    question: "¿En cuánto tiempo veré resultados?",
+    answer: "Nuestro proceso está diseñado para la agilidad. Una vez conectadas las fuentes, entregamos tu primer mapa de decisiones funcional en un plazo de 48 a 72 horas."
   }
 ];
 
@@ -24,27 +24,33 @@ const FAQ: React.FC = () => {
   const [openIndex, setOpenIndex] = React.useState<number | null>(0);
 
   return (
-    <section className="py-24 bg-slate-900/20 border-t border-slate-800">
+    <section className="py-24 bg-white border-t border-vizme-navy/5">
       <div className="mx-auto max-w-3xl px-4">
-        <h2 className="text-3xl font-semibold text-white text-center mb-12">Preguntas Frecuentes</h2>
+        <div className="text-center mb-16">
+          <span className="text-xs font-bold text-vizme-red uppercase tracking-widest">FAQ</span>
+          <h2 className="mt-4 text-3xl font-semibold text-vizme-navy">Preguntas Frecuentes</h2>
+        </div>
+        
         <div className="space-y-4">
           {faqs.map((faq, index) => (
             <div 
               key={index} 
               className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
                 openIndex === index 
-                ? 'bg-slate-800/50 border-indigo-500/30' 
-                : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'
+                ? 'bg-vizme-bg border-vizme-navy/20 shadow-sm' 
+                : 'bg-white border-vizme-navy/5 hover:border-vizme-navy/20'
               }`}
             >
               <button 
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
                 className="w-full flex items-center justify-between p-6 text-left"
               >
-                <span className={`text-sm font-medium ${openIndex === index ? 'text-white' : 'text-slate-300'}`}>
+                <span className={`text-sm font-semibold ${openIndex === index ? 'text-vizme-navy' : 'text-vizme-greyblue'}`}>
                   {faq.question}
                 </span>
-                {openIndex === index ? <Minus size={18} className="text-indigo-400" /> : <Plus size={18} className="text-slate-500" />}
+                <div className={`transition-transform duration-300 ${openIndex === index ? 'rotate-180' : ''}`}>
+                   {openIndex === index ? <Minus size={18} className="text-vizme-red" /> : <Plus size={18} className="text-vizme-navy" />}
+                </div>
               </button>
               
               <div 
@@ -52,7 +58,7 @@ const FAQ: React.FC = () => {
                   openIndex === index ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
-                <p className="px-6 pb-6 text-sm text-slate-400 leading-relaxed">
+                <p className="px-6 pb-6 text-sm text-vizme-greyblue leading-relaxed">
                   {faq.answer}
                 </p>
               </div>

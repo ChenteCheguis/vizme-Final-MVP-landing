@@ -5,16 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
   <!-- SEO & Social Media Metadata -->
-  <title>Vizme – Dashboards e insights hechos a la medida</title>
-  <meta name="description" content="Startup de Business Intelligence + IA aplicada. La incertidumbre nace de datos sin interpretación. Vizme los depura y te muestra dónde está el crecimiento real.">
-  <link rel="canonical" href="https://vizme.com.mx/" />
+  <title>Vizme – Dashboards e insights</title>
+  <meta name="description" content="Transformamos la incertidumbre en crecimiento. Vizme audita tus datos y te entrega dashboards accionables con IA para empresas, influencers y artistas.">
+  
+  <!-- Favicon Section: Cambia este href por tu enlace RAW de GitHub si es diferente -->
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
 
   <!-- Open Graph / Facebook / WhatsApp -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://vizme.com.mx/" />
-  <meta property="og:title" content="Vizme – Dashboards e insights hechos a la medida" />
-  <meta property="og:description" content="Decisiones claras hechas con datos. Audita tu potencial y elimina la incertidumbre de tu negocio." />
-  <meta property="og:image" content="https://vizme.com.mx/og-image.jpg" />
+  <meta property="og:title" content="Vizme – Dashboards e insights que generan ROI" />
+  <meta property="og:description" content="Deja de operar a ciegas. Audita tu potencial y elimina la incertidumbre de tu negocio con nuestra IA de Business Intelligence." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,12 +32,12 @@
           },
           colors: {
             vizme: {
-              navy: '#02222F',      /* Azul Marino Muy Oscuro (Textos, Footer, CTA BG) */
-              red: '#F54A43',       /* Rojo-Naranja Intenso (Botones, Acentos) */
-              orange: '#F26A3D',    /* Naranja Medio (Gradientes, Gráficas) */
-              greyblue: '#566970',  /* Gris Azulado (Textos secundarios) */
-              grey: '#ABB5B8',      /* Gris Claro (Bordes, desactivados) */
-              bg: '#EBF8FE',        /* Azul Pastel Muy Claro (Fondo Principal) */
+              navy: '#02222F',      /* Azul Marino Muy Oscuro */
+              red: '#F54A43',       /* Rojo-Naranja Intenso */
+              orange: '#F26A3D',    /* Naranja Medio */
+              greyblue: '#566970',  /* Gris Azulado */
+              grey: '#ABB5B8',      /* Gris Claro */
+              bg: '#EBF8FE',        /* Azul Pastel Muy Claro */
             }
           },
           animation: {
@@ -63,32 +66,13 @@
       color: #02222F; /* vizme.navy */
       -webkit-font-smoothing: antialiased;
     }
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #EBF8FE;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #566970;
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #02222F;
-    }
     .glass-panel {
       background: rgba(255, 255, 255, 0.7);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.6);
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-    }
-    .animate-delay-2000 {
-      animation-delay: 2s;
     }
   </style>
-  <!-- CLEAN IMPORTMAP: Strict React 18.2.0 enforcement -->
   <script type="importmap">
 {
   "imports": {
@@ -98,25 +82,14 @@
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
     "lucide-react": "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0",
     "recharts": "https://esm.sh/recharts@2.12.7?deps=react@18.2.0,react-dom@18.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.3.0"
   }
 }
 </script>
 </head>
 <body>
-  <!-- NETLIFY FORM DETECTION (HIDDEN) -->
-  <!-- Crucial: declare all fields here so Netlify knows what to expect -->
-  <form name="contact" netlify netlify-honeypot="bot-field" hidden>
-    <input type="text" name="name" />
-    <input type="email" name="email" />
-    <select name="lada"></select> 
-    <input type="tel" name="phone" />
-    <select name="profile"></select>
-    <input type="hidden" name="form-name" value="contact" />
-  </form>
-
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
