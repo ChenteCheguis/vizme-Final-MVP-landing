@@ -49,7 +49,7 @@ const Footer: React.FC = () => {
           <div className="space-y-4">
             <h4 className="text-sm font-bold text-white uppercase tracking-widest">Siguenos</h4>
             <div className="flex gap-4">
-              <a href="https://www.instagram.com/vizme.io/" target="_blank" rel="noopener noreferrer" className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-vizme-grey hover:text-white hover:bg-vizme-red/20 transition-all">
+              <a href="https://www.instagram.com/vizme_mx/" target="_blank" rel="noopener noreferrer" className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-vizme-grey hover:text-white hover:bg-vizme-red/20 transition-all">
                 <Instagram size={20} />
               </a>
               <a href="https://www.facebook.com/profile.php?id=61557174016134" target="_blank" rel="noopener noreferrer" className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-vizme-grey hover:text-white hover:bg-vizme-red/20 transition-all">
