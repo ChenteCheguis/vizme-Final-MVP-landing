@@ -1,63 +1,144 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Menu, X, ArrowRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Navbar: React.FC = () => {
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  const navLinks = [
+    { label: 'Como funciona', href: '#como-funciona' },
+    { label: 'Demo',          href: '#demo'          },
+    { label: 'Planes',        href: '#planes'        },
+  ];
+
+  // On white backgrounds (scrolled), text needs to be dark
+  const textBase = scrolled ? 'text-vizme-navy/60 hover:text-vizme-navy' : 'text-white/60 hover:text-white';
+  const textBrand = scrolled ? 'text-vizme-navy' : 'text-white';
+
   return (
-    <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${isScrolled ? 'pt-2' : 'pt-0'}`}>
-      <div className={`mx-auto max-w-6xl px-4 transition-all duration-300 ${isScrolled ? 'pt-0' : 'pt-4'}`}>
-        <div className={`relative flex items-center justify-between rounded-2xl border px-4 py-3 backdrop-blur-md transition-all duration-300 ${
-          isScrolled 
-            ? 'border-vizme-grey/20 bg-white/80 shadow-lg shadow-vizme-navy/5' 
-            : 'border-transparent bg-transparent'
-        }`}>
-          {/* Logo Section */}
-          <div className="flex flex-col">
-            <span className="text-sm font-bold uppercase tracking-[0.2em] text-vizme-navy">Vizme</span>
-            <span className="hidden sm:block text-[10px] text-vizme-greyblue">Dashboards e insights</span>
+    <>
+      <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? 'bg-white/95 backdrop-blur-lg shadow-lg shadow-vizme-navy/5 border-b border-vizme-navy/8'
+          : 'bg-transparent'
+      }`}>
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="flex h-16 items-center justify-between">
+
+            {/* Logo */}
+            <Link to="/" className="flex items-center gap-2.5">
+              <div
+                className="h-7 w-7 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #F54A43, #F26A3D)' }}
+              >
+                <span className="text-[11px] font-black text-white">V</span>
+              </div>
+              <span className={`text-base font-black uppercase tracking-[0.18em] ${textBrand}`}>Vizme</span>
+            </Link>
+
+            {/* Desktop nav */}
+            <nav className="hidden md:flex items-center gap-1">
+              {navLinks.map(({ label, href }) => (
+                <a
+                  key={label}
+                  href={href}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg hover:bg-vizme-navy/5 transition-all ${textBase}`}
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+
+            {/* Desktop actions — only "Iniciar sesion" (no "Empezar gratis") */}
+            <div className="hidden md:flex items-center gap-3">
+              {user ? (
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold border transition-all ${
+                    scrolled
+                      ? 'text-vizme-navy border-vizme-navy/15 hover:bg-vizme-navy/5'
+                      : 'text-white border-white/15 hover:bg-white/10'
+                  }`}
+                >
+                  Ir al app <ArrowRight size={14} />
+                </button>
+              ) : (
+                <Link
+                  to="/login"
+                  className={`flex items-center gap-1.5 rounded-xl px-5 py-2 text-sm font-semibold border transition-all ${
+                    scrolled
+                      ? 'text-vizme-navy border-vizme-navy/15 hover:bg-vizme-navy/5'
+                      : 'text-white border-white/15 hover:bg-white/10'
+                  }`}
+                >
+                  Iniciar sesion
+                </Link>
+              )}
+            </div>
+
+            {/* Mobile toggle */}
+            <button
+              className={`md:hidden h-9 w-9 rounded-xl flex items-center justify-center ${scrolled ? 'bg-vizme-navy/5 text-vizme-navy' : 'bg-white/10 text-white'}`}
+              onClick={() => setMenuOpen(v => !v)}
+            >
+              {menuOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
           </div>
-
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-8 text-xs font-medium text-vizme-greyblue">
-            <a href="#como-funciona" className="hover:text-vizme-navy transition-colors">Cómo funciona</a>
-            <a href="#para-quien" className="hover:text-vizme-navy transition-colors">Para quién</a>
-            <a href="#cta" className="group flex items-center gap-2 rounded-full bg-vizme-red px-4 py-1.5 text-white transition-all hover:bg-vizme-orange hover:shadow-lg hover:shadow-vizme-red/20">
-              Solicitar demo
-              <span className="flex h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]"></span>
-            </a>
-          </nav>
-
-          {/* Mobile Menu Toggle */}
-          <button 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-vizme-navy hover:text-vizme-red"
-          >
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
         </div>
-      </div>
+      </header>
 
-      {/* Mobile Nav Dropdown */}
-      {mobileMenuOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 mx-4 p-4 rounded-2xl border border-vizme-grey/20 bg-white/95 backdrop-blur-xl md:hidden flex flex-col gap-4 text-center shadow-2xl">
-          <a href="#como-funciona" onClick={() => setMobileMenuOpen(false)} className="text-sm text-vizme-greyblue py-2">Cómo funciona</a>
-          <a href="#para-quien" onClick={() => setMobileMenuOpen(false)} className="text-sm text-vizme-greyblue py-2">Para quién</a>
-          <a href="#cta" onClick={() => setMobileMenuOpen(false)} className="mx-auto inline-flex items-center justify-center rounded-full bg-vizme-red px-6 py-2 text-sm font-medium text-white">
-            Solicitar demo
-          </a>
+      {/* Mobile drawer */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div
+            className="absolute inset-0 bg-[#02222F]/95 backdrop-blur-xl"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="relative flex flex-col h-full pt-20 px-6 pb-10">
+            <nav className="space-y-1 mb-8">
+              {navLinks.map(({ label, href }) => (
+                <a
+                  key={label}
+                  href={href}
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3.5 text-base font-medium text-white/70 hover:text-white rounded-xl hover:bg-white/8 transition-all"
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+            <div className="mt-auto space-y-3">
+              {user ? (
+                <button
+                  onClick={() => { navigate('/dashboard'); setMenuOpen(false); }}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-white border border-white/20"
+                >
+                  Ir al app <ArrowRight size={14} />
+                </button>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="block w-full text-center rounded-2xl py-3.5 text-sm font-medium text-white/70 border border-white/15 hover:bg-white/8 transition-colors"
+                >
+                  Iniciar sesion
+                </Link>
+              )}
+            </div>
+          </div>
         </div>
       )}
-    </header>
+    </>
   );
 };
 

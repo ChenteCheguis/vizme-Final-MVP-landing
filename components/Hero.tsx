@@ -1,250 +1,398 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, TrendingUp, AlertCircle, Zap, Building2, Users, Palette, CheckCircle2 } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, CartesianGrid } from 'recharts';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowRight, TrendingUp, AlertCircle, Zap, Building2, Users, ShoppingBag, Upload, Brain, LayoutDashboard, CheckCircle2, Star, MousePointer2 } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, CartesianGrid, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 
-// Data scenarios
+// ─── Scenarios ───────────────────────────────────────────────────────────────
+
 const scenarios = {
-  empresa: {
-    label: "Empresa SaaS",
-    color: "#F26A3D", // Orange
+  retail: {
+    label: 'Retail',
+    icon: ShoppingBag,
+    kpis: [
+      { label: 'Ventas del Mes',     value: '$284K',   trend: '+18%',      trendUp: true,  detail: 'vs $240K mes anterior' },
+      { label: 'Producto Estrella',  value: 'Cemento', trend: '34% share', trendUp: true,  detail: 'Portland tipo I' },
+      { label: 'Stock Crítico',      value: '3 SKUs',  trend: '⚠ Reorden', trendUp: false, detail: 'Impermeabilizante, Varilla, Block' },
+    ],
+    insight: 'La Región Norte genera el 42% de tus ventas con solo 2 visitas/mes. Abre un punto regional — potencial +$38K/mes.',
+    chartLabel: 'Ingresos mensuales ($K)',
+    chartData: [
+      { name: 'Ene', v: 185 }, { name: 'Feb', v: 210 }, { name: 'Mar', v: 198 },
+      { name: 'Abr', v: 245 }, { name: 'May', v: 230 }, { name: 'Jun', v: 284 },
+    ],
+    chartType: 'area' as const,
+    pieData: [
+      { name: 'Norte', value: 42, color: '#F54A43' },
+      { name: 'Centro', value: 31, color: '#02222F' },
+      { name: 'Sur', value: 27, color: '#ABB5B8' },
+    ],
+    color: '#F54A43',
+    healthScore: 7.8,
+  },
+  b2b: {
+    label: 'Empresa B2B',
     icon: Building2,
     kpis: [
-      { label: "Ganancia Proyectada", value: "$42.5K", trend: "+12%", trendUp: true, sub: "vs mes anterior" },
-      { label: "Perdida de clientes", value: "8 Ctas", trend: "Alerta Alta", trendUp: false, sub: "Requiere atención" },
-      { label: "Factura Promedio", value: "$3,200", trend: "Estable", trendUp: true, sub: "Últimos 90 días" }
+      { label: 'MRR Proyectado',     value: '$42.5K',  trend: '+12%',     trendUp: true,  detail: '48 cuentas activas' },
+      { label: 'Clientes en Riesgo', value: '8 ctas',  trend: '⚠ Churn', trendUp: false, detail: 'Plan Pro mes 4-6' },
+      { label: 'LTV Promedio',       value: '$18,200', trend: '+5%',      trendUp: true,  detail: 'Payback 7.2 meses' },
     ],
-    insight: "Detectamos que los clientes del plan 'Pro' tienen un 40% más de riesgo de fuga en el mes 4. Lanza una campaña de fidelización el día 90.",
+    insight: 'Clientes del plan Pro tienen 40% más riesgo de fuga en el mes 4. Campaña de activación día 90 → ahorra ~$8K/mes.',
+    chartLabel: 'MRR acumulado ($K)',
     chartData: [
-      { name: 'S1', value: 32000 }, { name: 'S2', value: 34500 }, { name: 'S3', value: 33000 },
-      { name: 'S4', value: 38000 }, { name: 'S5', value: 36500 }, { name: 'S6', value: 42500 }, { name: 'S7', value: 44000 }
-    ]
+      { name: 'Ene', v: 32 }, { name: 'Feb', v: 34 }, { name: 'Mar', v: 33 },
+      { name: 'Abr', v: 38 }, { name: 'May', v: 37 }, { name: 'Jun', v: 42 },
+    ],
+    chartType: 'area' as const,
+    pieData: [
+      { name: 'Enterprise', value: 52, color: '#F26A3D' },
+      { name: 'Pro', value: 33, color: '#02222F' },
+      { name: 'Starter', value: 15, color: '#ABB5B8' },
+    ],
+    color: '#F26A3D',
+    healthScore: 6.4,
   },
-  influencer: {
-    label: "Influencer / Creador",
-    color: "#F54A43", // Red
+  distribucion: {
+    label: 'Distribución',
     icon: Users,
     kpis: [
-      { label: "Engagement", value: "8.4%", trend: "+2.1%", trendUp: true, sub: "Mejor que el promedio" },
-      { label: "Mejor Hora", value: "18:30", trend: "Jueves", trendUp: true, sub: "Para Reels y TikTok" },
-      { label: "Marcas", value: "5 Activas", trend: "Pipeline", trendUp: true, sub: "En negociación" }
+      { label: 'Pedidos del Mes',    value: '1,247',  trend: '+22%',   trendUp: true,  detail: 'Fill rate 96.2%' },
+      { label: 'Costo / Entrega',    value: '$87',    trend: 'Óptimo', trendUp: true,  detail: 'Benchmark: $80-150' },
+      { label: 'Rutas Ineficientes', value: '3',      trend: '⚠ -18%', trendUp: false, detail: 'Rutas C, F, H' },
     ],
-    insight: "Tus 'Stories' de estilo de vida tienen un 3x más de conversión para marcas de moda que tus posts del feed. Prioriza ese formato para la campaña de Nike.",
+    insight: '3 rutas tienen costo 18% mayor al promedio. Re-enruta por polígono de calor — ahorro estimado $12K/mes.',
+    chartLabel: 'Pedidos por ruta',
     chartData: [
-      { name: 'Lun', value: 12000 }, { name: 'Mar', value: 15000 }, { name: 'Mie', value: 18000 },
-      { name: 'Jue', value: 28000 }, { name: 'Vie', value: 24000 }, { name: 'Sab', value: 32000 }, { name: 'Dom', value: 35000 }
-    ]
+      { name: 'Ruta A', v: 420 }, { name: 'Ruta B', v: 380 }, { name: 'Ruta C', v: 290 },
+      { name: 'Ruta D', v: 157 }, { name: 'Ruta E', v: 95 },
+    ],
+    chartType: 'bar' as const,
+    pieData: [
+      { name: 'CDMX', value: 45, color: '#02222F' },
+      { name: 'MTY', value: 30, color: '#F54A43' },
+      { name: 'GDL', value: 25, color: '#ABB5B8' },
+    ],
+    color: '#02222F',
+    healthScore: 8.1,
   },
-  artista: {
-    label: "Artista Visual",
-    color: "#02222F", // Navy for contrast
-    icon: Palette,
-    kpis: [
-      { label: "Ventas Obra", value: "$8,400", trend: "+5%", trendUp: true, sub: "Colección 'Void'" },
-      { label: "Stock Crítico", value: "2 Obras", trend: "Bajo", trendUp: false, sub: "Serie limitada" },
-      { label: "Canal Top", value: "Instagram", trend: "65% Conv.", trendUp: true, sub: "Fuente principal" }
-    ],
-    insight: "Las obras de formato mediano (50x70) se venden un 50% más rápido en tu web que en galería física. Aumenta la producción de ese tamaño.",
-    chartData: [
-      { name: 'Ene', value: 4000 }, { name: 'Feb', value: 3500 }, { name: 'Mar', value: 6000 },
-      { name: 'Abr', value: 5500 }, { name: 'May', value: 8000 }, { name: 'Jun', value: 7500 }, { name: 'Jul', value: 9200 }
-    ]
-  }
 };
 
+type Key = keyof typeof scenarios;
+
+// ─── Health ring ─────────────────────────────────────────────────────────────
+
+const HealthRing: React.FC<{ score: number; color: string }> = ({ score, color }) => {
+  const r = 14;
+  const circ = 2 * Math.PI * r;
+  const arc = circ * (score / 10);
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <circle cx="20" cy="20" r={r} fill="none" stroke="#EBF8FE" strokeWidth="4" />
+      <circle
+        cx="20" cy="20" r={r} fill="none" stroke={color} strokeWidth="4"
+        strokeDasharray={`${arc} ${circ}`} strokeLinecap="round"
+        transform="rotate(-90 20 20)"
+        style={{ transition: 'stroke-dasharray 0.8s ease' }}
+      />
+      <text x="20" y="24" textAnchor="middle" fontSize="9" fontWeight="800" fill="#02222F">{score}</text>
+    </svg>
+  );
+};
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
 const Hero: React.FC = () => {
-  const [activePersona, setActivePersona] = useState<keyof typeof scenarios>('empresa');
-  const currentScenario = scenarios[activePersona];
-  const [animateChart, setAnimateChart] = useState(false);
+  const [active, setActive] = useState<Key>('retail');
+  const [animate, setAnimate] = useState(true);
+  const [hoveredKpi, setHoveredKpi] = useState<number | null>(null);
+  const [showPie, setShowPie] = useState(false);
+  const autoRotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const s = scenarios[active];
+  const keys = Object.keys(scenarios) as Key[];
 
+  // Auto-rotate scenarios every 5s
   useEffect(() => {
-    setAnimateChart(false);
-    const timer = setTimeout(() => setAnimateChart(true), 100);
-    return () => clearTimeout(timer);
-  }, [activePersona]);
+    autoRotateRef.current = setInterval(() => {
+      setActive(prev => {
+        const idx = keys.indexOf(prev);
+        return keys[(idx + 1) % keys.length];
+      });
+    }, 5000);
+    return () => { if (autoRotateRef.current) clearInterval(autoRotateRef.current); };
+  }, []);
 
-  const formatCurrency = (value: number) => {
-    if (activePersona === 'influencer') return value.toLocaleString();
-    return `$${value.toLocaleString()}`;
+  // Reset animation on tab change
+  useEffect(() => {
+    setAnimate(false);
+    setShowPie(false);
+    const t1 = setTimeout(() => setAnimate(true), 80);
+    const t2 = setTimeout(() => setShowPie(true), 600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [active]);
+
+  const handleTabClick = (key: Key) => {
+    // Stop auto-rotate when user manually clicks
+    if (autoRotateRef.current) { clearInterval(autoRotateRef.current); autoRotateRef.current = null; }
+    setActive(key);
   };
 
   return (
-    <section className="relative overflow-hidden pt-32 pb-20 lg:pt-40 lg:pb-32 bg-vizme-bg">
-      
-      {/* Background Blobs */}
-      <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-cyan-400/20 blur-[100px] animate-blob mix-blend-multiply"></div>
-      <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-purple-400/20 blur-[100px] animate-blob animate-delay-2000 mix-blend-multiply"></div>
+    <section className="relative overflow-hidden bg-[#02222F] pt-28 pb-0 lg:pt-36">
+
+      {/* Mesh gradient background */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 w-full h-full opacity-[0.07]"
+          style={{ backgroundImage: 'radial-gradient(ellipse 80% 60% at 20% 20%, #F54A43 0%, transparent 70%), radial-gradient(ellipse 60% 50% at 80% 80%, #F26A3D 0%, transparent 70%)' }} />
+        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(235,248,254,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(235,248,254,0.03) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+      </div>
 
       <div className="mx-auto max-w-7xl px-4 relative z-10">
-        <div className="grid gap-16 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-          
-          {/* Left: Sales Copy */}
-          <div className="space-y-8 animate-fade-in text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 rounded-full border border-vizme-navy/10 bg-white/60 px-3 py-1 text-[11px] font-medium text-vizme-navy backdrop-blur-sm mx-auto lg:mx-0 shadow-sm">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-vizme-red opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-vizme-red"></span>
-              </span>
-              Startup de Business Intelligence + IA aplicada
+        <div className="grid lg:grid-cols-[1fr_1.2fr] gap-12 lg:items-end">
+
+          {/* ─── Left ─────────────────────────────────────── */}
+          <div className="space-y-8 py-8 lg:py-0 text-center lg:text-left lg:pb-20">
+
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/8 border border-white/10 px-3.5 py-1.5 text-[11px] font-semibold text-white/80 backdrop-blur-sm mx-auto lg:mx-0">
+              <Star size={10} className="text-vizme-orange fill-vizme-orange" />
+              Business Intelligence + IA para PyMEs mexicanas
             </div>
 
-            <h1 className="text-4xl font-semibold tracking-tight text-vizme-navy sm:text-5xl lg:text-6xl leading-[1.1]">
-              Decisiones claras <br className="hidden lg:block"/>
-              <span className="text-vizme-orange">
-                hechas con datos.
-              </span>
-            </h1>
+            <div className="space-y-3">
+              <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-black tracking-tight text-white leading-[1.05]">
+                Convierte tu Excel
+                <br />
+                <span className="text-transparent bg-clip-text"
+                  style={{ backgroundImage: 'linear-gradient(90deg, #F54A43, #F26A3D)' }}>
+                  en decisiones que dan dinero.
+                </span>
+              </h1>
+              <p className="text-base sm:text-lg text-white/55 leading-relaxed max-w-lg mx-auto lg:mx-0">
+                Sube tus datos, la IA descubre lo que nadie ve y te dice exactamente qué hacer — dashboards, alertas, predicciones y ROI en menos de 2 minutos.
+              </p>
+            </div>
 
-            <p className="max-w-xl text-lg text-vizme-greyblue leading-relaxed mx-auto lg:mx-0">
-              La incertidumbre nace de datos sin interpretación. Vizme los depura, aplica IA y te muestra exactamente dónde está el <strong>crecimiento real</strong>.
-            </p>
+            <div className="flex items-center gap-2 justify-center lg:justify-start flex-wrap">
+              {[
+                { icon: Upload,          label: 'Sube tu archivo', num: '1' },
+                { icon: Brain,           label: 'IA lo analiza',   num: '2' },
+                { icon: LayoutDashboard, label: 'Dashboard listo', num: '3' },
+              ].map(({ icon: Icon, label, num }, i) => (
+                <React.Fragment key={num}>
+                  <div className="flex items-center gap-2 bg-white/8 border border-white/10 rounded-xl px-3 py-2">
+                    <span className="h-5 w-5 rounded-full bg-vizme-red flex items-center justify-center text-[9px] font-black text-white flex-shrink-0">{num}</span>
+                    <Icon size={12} className="text-white/70 flex-shrink-0" />
+                    <span className="text-[11px] font-medium text-white/80 whitespace-nowrap">{label}</span>
+                  </div>
+                  {i < 2 && <ArrowRight size={12} className="text-white/20 flex-shrink-0 hidden sm:block" />}
+                </React.Fragment>
+              ))}
+            </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <a href="#cta" className="inline-flex items-center justify-center gap-2 rounded-full bg-vizme-red px-8 py-4 text-sm font-bold text-white hover:bg-vizme-orange transition-colors shadow-lg shadow-vizme-red/30 transform hover:-translate-y-0.5 duration-200">
-                Analizar mi potencial
-                <ArrowRight size={16} />
-              </a>
-              <a href="#como-funciona" className="inline-flex items-center justify-center gap-2 rounded-full border border-vizme-navy/20 bg-white px-8 py-4 text-sm font-semibold text-vizme-navy hover:bg-white/80 transition-colors shadow-sm">
-                Nuestra metodología
+            <div className="flex justify-center lg:justify-start">
+              <a
+                href="/register"
+                className="inline-flex items-center justify-center gap-3 rounded-2xl px-16 py-5 text-lg font-black text-white transition-all shadow-lg hover:-translate-y-1 duration-200 group"
+                style={{ background: 'linear-gradient(135deg, #F54A43, #F26A3D)', boxShadow: '0 8px 32px rgba(245,74,67,0.4)' }}
+              >
+                Empezar gratis
+                <ArrowRight size={20} className="transition-transform group-hover:translate-x-1" />
               </a>
             </div>
 
-            <div className="pt-6 border-t border-vizme-navy/5 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start text-xs text-vizme-greyblue">
-              <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-vizme-navy"/> Sin configuraciones complejas</span>
-              <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-vizme-navy"/> Reportes estratégicos</span>
-              <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-vizme-navy"/> Decisiones fundamentadas</span>
+            <div className="flex flex-wrap gap-4 justify-center lg:justify-start text-xs text-white/40">
+              {['Sin código', 'Sin consultores', 'Datos bajo NDA', 'Cancela cuando quieras'].map(t => (
+                <span key={t} className="flex items-center gap-1.5">
+                  <CheckCircle2 size={11} className="text-white/30" />{t}
+                </span>
+              ))}
             </div>
           </div>
 
-          {/* Right: Interactive Dashboard Simulator */}
-          <div className="relative w-full">
-            
-            {/* Persona Switcher Tabs */}
-            <div className="flex justify-center lg:justify-end mb-4 gap-2">
-              {(Object.keys(scenarios) as Array<keyof typeof scenarios>).map((key) => {
-                 const isActive = activePersona === key;
-                 const ScenIcon = scenarios[key].icon;
-                 return (
-                   <button
+          {/* ─── Right — interactive dashboard preview ───── */}
+          <div className="relative pb-0">
+
+            <div className="absolute -inset-4 rounded-3xl blur-3xl opacity-20 pointer-events-none"
+              style={{ background: `radial-gradient(circle at 50% 50%, ${s.color}, transparent 70%)`, transition: 'background 0.5s ease' }} />
+
+            {/* Scenario tabs with auto-rotate indicator */}
+            <div className="flex gap-2 mb-3 justify-center lg:justify-start">
+              {keys.map((key) => {
+                const Icon = scenarios[key].icon;
+                const isActive = active === key;
+                return (
+                  <button
                     key={key}
-                    onClick={() => setActivePersona(key)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all duration-300 border ${
-                      isActive 
-                      ? 'bg-vizme-navy text-white border-vizme-navy shadow-lg' 
-                      : 'bg-white border-vizme-navy/10 text-vizme-greyblue hover:text-vizme-navy hover:border-vizme-navy/30'
+                    onClick={() => handleTabClick(key)}
+                    className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all border ${
+                      isActive
+                        ? 'bg-white text-vizme-navy border-transparent shadow-lg'
+                        : 'bg-white/8 border-white/10 text-white/60 hover:bg-white/15 hover:text-white'
                     }`}
-                   >
-                     <ScenIcon size={14} className={isActive ? 'text-white' : ''} />
-                     {key.charAt(0).toUpperCase() + key.slice(1)}
-                   </button>
-                 )
+                  >
+                    <Icon size={11} />
+                    {scenarios[key].label}
+                    {/* Auto-rotate progress bar */}
+                    {isActive && autoRotateRef.current && (
+                      <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-vizme-navy/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-vizme-red rounded-full animate-[progress_5s_linear_infinite]" />
+                      </div>
+                    )}
+                  </button>
+                );
               })}
             </div>
 
-            {/* The Dashboard Card */}
-            <div className="group relative transition-all duration-500">
-                {/* Glow effect matching chart color */}
-                <div 
-                  className="absolute -inset-0.5 rounded-3xl opacity-20 blur-xl group-hover:opacity-30 transition-all duration-500"
-                  style={{ background: `linear-gradient(to right, ${currentScenario.color}, transparent)` }}
-                ></div>
-                
-                <div className="glass-panel relative overflow-hidden rounded-2xl p-5 sm:p-6 shadow-2xl bg-white">
-                  
-                  {/* Dashboard Header */}
-                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                       {/* REMOVED LOGO HERE */}
-                       <div>
-                          <h3 className="text-sm font-semibold text-vizme-navy">Vista General: {currentScenario.label}</h3>
-                          <p className="text-[10px] text-vizme-greyblue">Datos actualizados en tiempo real</p>
-                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-2 w-2 relative">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-vizme-red opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-vizme-red"></span>
-                      </span>
-                      <span className="text-[10px] font-mono text-vizme-red uppercase font-bold">Live</span>
-                    </div>
-                  </div>
+            {/* Dashboard card */}
+            <div className="relative bg-white rounded-t-3xl shadow-2xl overflow-hidden border border-white/10"
+              style={{ transition: 'all 0.3s ease' }}>
 
-                  {/* KPIs */}
-                  <div className="grid grid-cols-3 gap-3 mb-6">
-                    {currentScenario.kpis.map((kpi, i) => (
-                      <div key={i} className="rounded-xl bg-vizme-bg/50 border border-vizme-navy/5 p-3 flex flex-col justify-between hover:border-vizme-navy/10 transition-colors">
-                        <span className="text-[10px] text-vizme-greyblue font-medium uppercase truncate" title={kpi.label}>{kpi.label}</span>
-                        <div className="my-1 overflow-hidden">
-                          {/* Mobile Fix: Adjusted font sizes (text-xs sm:text-xl) to fit 'Instagram' */}
-                          <span className="text-xs sm:text-xl font-bold text-vizme-navy block tracking-tight truncate" title={kpi.value}>
-                            {kpi.value}
-                          </span>
-                        </div>
-                        <div className={`text-[10px] font-medium flex items-center gap-1 ${kpi.trendUp ? 'text-emerald-600' : 'text-vizme-red'}`}>
-                           {kpi.trendUp ? <TrendingUp size={10} /> : <AlertCircle size={10} />}
-                           {kpi.trend}
-                        </div>
-                      </div>
-                    ))}
+              {/* Window chrome */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-vizme-navy/6 bg-vizme-bg/40">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-yellow-400/70" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-green-400/70" />
                   </div>
-
-                  {/* Dynamic Chart */}
-                  <div className="h-48 w-full mb-6 relative rounded-xl bg-white border border-gray-100 p-2 overflow-hidden shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                    <div className="absolute top-2 left-4 z-10 text-[10px] text-vizme-greyblue font-medium">Tendencia (Último periodo)</div>
-                    
-                    {animateChart && (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={currentScenario.chartData}>
-                          <defs>
-                            <linearGradient id={`gradient-${activePersona}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={currentScenario.color} stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor={currentScenario.color} stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="name" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                          <Tooltip 
-                            contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', fontSize: '12px', borderRadius: '8px', color: '#02222F', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                            itemStyle={{ color: '#02222F', fontWeight: 600 }}
-                            cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
-                            formatter={(value: number) => [formatCurrency(value), "Valor"]}
-                          />
-                          <Area 
-                            type="monotone" 
-                            dataKey="value" 
-                            stroke={currentScenario.color} 
-                            strokeWidth={3} 
-                            fillOpacity={1} 
-                            fill={`url(#gradient-${activePersona})`} 
-                            animationDuration={1000}
-                            animationEasing="ease-out"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-
-                  {/* AI Insight Box */}
-                  <div className="rounded-xl bg-vizme-bg border border-vizme-navy/5 p-4 flex gap-3 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-vizme-navy"></div>
-                    <div className="mt-0.5 min-w-[24px]">
-                      <div className="h-6 w-6 rounded-full bg-white border border-vizme-navy/10 flex items-center justify-center text-vizme-navy shadow-sm">
-                        <Zap size={14} className="fill-current" />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-vizme-navy mb-1 flex items-center gap-2">
-                        IA Insight Detectado
-                      </p>
-                      <p className="text-xs text-vizme-greyblue leading-relaxed">
-                        {currentScenario.insight}
-                      </p>
-                    </div>
-                  </div>
-
+                  <p className="text-[10px] font-semibold text-vizme-greyblue ml-1">{s.label} — Dashboard IA</p>
                 </div>
+                <div className="flex items-center gap-3">
+                  <HealthRing score={s.healthScore} color={s.color} />
+                  <span className="flex items-center gap-1.5">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                    </span>
+                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wide">Live</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+
+                {/* Interactive KPIs — hover to see detail */}
+                <div className="grid grid-cols-3 gap-2">
+                  {s.kpis.map((kpi, i) => (
+                    <div
+                      key={i}
+                      className="rounded-xl bg-vizme-bg border border-vizme-navy/5 p-3 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-vizme-navy/15 hover:scale-[1.02]"
+                      onMouseEnter={() => setHoveredKpi(i)}
+                      onMouseLeave={() => setHoveredKpi(null)}
+                    >
+                      <p className="text-[9px] text-vizme-greyblue font-semibold uppercase tracking-wider truncate mb-1">{kpi.label}</p>
+                      <p className="text-base font-black text-vizme-navy leading-none truncate" title={kpi.value}>{kpi.value}</p>
+                      <p className={`text-[10px] font-semibold flex items-center gap-1 mt-1.5 transition-all ${kpi.trendUp ? 'text-emerald-600' : 'text-vizme-red'}`}>
+                        {kpi.trendUp ? <TrendingUp size={9} /> : <AlertCircle size={9} />}
+                        {hoveredKpi === i ? kpi.detail : kpi.trend}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Chart + mini pie side by side */}
+                <div className="grid grid-cols-[1fr_90px] gap-2">
+                  <div className="rounded-xl bg-vizme-bg border border-vizme-navy/5 p-3">
+                    <p className="text-[9px] text-vizme-greyblue font-semibold mb-2 uppercase tracking-wider">{s.chartLabel}</p>
+                    <div className="h-32">
+                      {animate && (
+                        <ResponsiveContainer width="100%" height="100%">
+                          {s.chartType === 'bar' ? (
+                            <BarChart data={s.chartData} barSize={20} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2EFF4" />
+                              <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#566970' }} axisLine={false} tickLine={false} />
+                              <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, backgroundColor: '#02222F', border: 'none', color: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }} cursor={{ fill: 'rgba(2,34,47,0.04)' }} />
+                              <Bar dataKey="v" radius={[4, 4, 0, 0]} animationDuration={800}>
+                                {s.chartData.map((_, idx) => (
+                                  <Cell key={idx} fill={idx < 3 ? s.color : '#ABB5B8'} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          ) : (
+                            <AreaChart data={s.chartData} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id={`grad-${active}`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor={s.color} stopOpacity={0.2} />
+                                  <stop offset="95%" stopColor={s.color} stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2EFF4" />
+                              <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#566970' }} axisLine={false} tickLine={false} />
+                              <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, backgroundColor: '#02222F', border: 'none', color: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }} formatter={(v: number) => [`$${v}K`, 'Valor']} />
+                              <Area type="monotone" dataKey="v" stroke={s.color} strokeWidth={2.5}
+                                fill={`url(#grad-${active})`} dot={{ r: 3, fill: s.color, strokeWidth: 0 }}
+                                activeDot={{ r: 5, strokeWidth: 0 }} animationDuration={800} />
+                            </AreaChart>
+                          )}
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mini donut */}
+                  <div className="rounded-xl bg-vizme-bg border border-vizme-navy/5 p-2 flex flex-col items-center justify-center">
+                    <div className="h-16 w-16">
+                      {showPie && (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={s.pieData} dataKey="value" cx="50%" cy="50%" innerRadius={18} outerRadius={28} strokeWidth={0} animationDuration={600}>
+                              {s.pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                    <div className="space-y-0.5 mt-1">
+                      {s.pieData.map((d, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <div className="h-1.5 w-1.5 rounded-full" style={{ background: d.color }} />
+                          <span className="text-[7px] text-vizme-greyblue truncate">{d.name} {d.value}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Insight */}
+                <div className="rounded-xl border border-vizme-navy/8 p-3.5 flex gap-3 group cursor-pointer hover:shadow-md transition-all"
+                  style={{ background: `linear-gradient(135deg, ${s.color}08, transparent)` }}>
+                  <div className="h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
+                    style={{ background: s.color }}>
+                    <Zap size={12} className="text-white fill-white" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-vizme-navy mb-0.5 uppercase tracking-wide">Insight detectado por IA</p>
+                    <p className="text-[11px] text-vizme-greyblue leading-relaxed">{s.insight}</p>
+                  </div>
+                </div>
+
+                {/* Interactive hint */}
+                <div className="flex items-center justify-center gap-1.5 opacity-40">
+                  <MousePointer2 size={9} className="text-vizme-greyblue" />
+                  <p className="text-[8px] text-vizme-greyblue">Hover en los KPIs para ver detalles</p>
+                </div>
+              </div>
+
+              <div className="h-6 bg-gradient-to-b from-white to-transparent" />
             </div>
           </div>
+        </div>
+      </div>
 
+      {/* Stats bar */}
+      <div className="relative z-10 bg-white/6 border-t border-white/8 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-4 py-4">
+          <div className="flex flex-wrap items-center justify-center lg:justify-between gap-6">
+            {[
+              { value: '+200',    label: 'PyMEs en México' },
+              { value: '<2 min',  label: 'Tiempo promedio de análisis' },
+              { value: '15+',     label: 'Tipos de gráfica' },
+              { value: '100%',    label: 'Datos bajo tu control' },
+            ].map(({ value, label }) => (
+              <div key={label} className="text-center">
+                <p className="text-xl font-black text-white">{value}</p>
+                <p className="text-[10px] text-white/40 mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

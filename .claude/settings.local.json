@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/diego/vizme-Final-MVP-landing -maxdepth 3 ! -path */node_modules/* ! -path */.git/* ! -path */dist/* -type f -o -type d)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npm list:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(find /c/Users/diego/vizme-Final-MVP-landing/supabase -type f -name *.ts -o -name *.sql)",
+      "Bash(find /c/Users/diego/vizme-Final-MVP-landing -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\) ! -path */node_modules/* ! -path */.git/* ! -path */dist/* -exec wc -l {} +)",
+      "Bash(grep -r export /c/Users/diego/vizme-Final-MVP-landing/lib/*.ts)",
+      "Bash(cd:*)",
+      "Bash(npx vite:*)",
+      "Bash(supabase functions:*)",
+      "Bash(npx supabase:*)",
+      "Bash(command -v python python3)",
+      "Bash(pdftotext -layout \"Vizme_v5_Documento_Maestro.pdf\" \"/tmp/vizme_v5.txt\")",
+      "Bash(pdfinfo \"Vizme_v5_Documento_Maestro.pdf\")",
+      "Read(//tmp/**)",
+      "Bash(command -v supabase)",
+      "Bash(supabase --version)",
+      "Bash(supabase projects *)"
+    ]
+  }
+}

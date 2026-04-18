@@ -1,106 +1,60 @@
 <!DOCTYPE html>
-<html lang="es" class="scroll-smooth" style="scroll-padding-top: 100px;">
+<html lang="es-MX" class="scroll-smooth" style="scroll-padding-top: 100px;">
 <head>
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Open Graph / Facebook -->
-<meta property="og:title" content="Vizme – Dashboards e insights que generan ganancia" />
-<meta property="og:description" content="Transformamos tus datos en decisiones claras y accionables." />
-<meta property="og:image" content="https://vizme.com.mx/og-image.png" />
-<meta property="og:url" content="https://vizme.com.mx/" />
-<meta property="og:type" content="website" />
+  <title>Vizme — Business Intelligence con IA para PyMEs mexicanas</title>
+  <meta name="description" content="Sube tu Excel, la IA analiza todo y genera dashboards interactivos, alertas de riesgo y recomendaciones concretas. Reemplaza a un consultor de datos por una fracción del costo.">
+  <meta name="keywords" content="business intelligence, PyMEs, México, análisis de datos, dashboards, IA, inteligencia artificial, Excel, consultoría datos">
+  <meta name="author" content="Vizme">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://vizme.com.mx/" />
 
-<!-- Twitter -->
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:image" content="https://vizme.com.mx/og-image.png" />
-
-  
-  <!-- SEO & Social Media Metadata -->
-  <title>Vizme – Dashboards e insights</title>
-  <meta name="description" content="Transformamos la incertidumbre en crecimiento. Vizme audita tus datos y te entrega dashboards accionables con IA para empresas, influencers y artistas.">
-  
-  <!-- Favicon Section: Cambia este href por tu enlace RAW de GitHub si es diferente -->
+  <!-- Favicon -->
   <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
   <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
 
-  <!-- Open Graph / Facebook / WhatsApp -->
+  <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://vizme.com.mx/" />
-  <meta property="og:title" content="Vizme – Dashboards e insights que generan ganancia" />
-  <meta property="og:description" content="Deja de operar a ciegas. Audita tu potencial y elimina la incertidumbre de tu negocio con nuestra consultoría de IA + Business Intelligence." />
+  <meta property="og:title" content="Vizme — Tu negocio tiene datos. Ahora tiene respuestas." />
+  <meta property="og:description" content="Sube tu Excel, la IA analiza todo y genera dashboards, alertas y recomendaciones en menos de 2 minutos. Para PyMEs mexicanas." />
   <meta property="og:image" content="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
+  <meta property="og:locale" content="es_MX" />
+  <meta property="og:site_name" content="Vizme" />
 
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Vizme — Business Intelligence con IA para PyMEs" />
+  <meta name="twitter:description" content="Sube tu Excel, la IA analiza todo y genera dashboards en menos de 2 minutos." />
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/diego-vizme/assets/main/logo.png" />
+
+  <!-- Theme color -->
+  <meta name="theme-color" content="#02222F" />
+  <meta name="msapplication-TileColor" content="#02222F" />
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-          },
-          colors: {
-            vizme: {
-              navy: '#02222F',      /* Azul Marino Muy Oscuro */
-              red: '#F54A43',       /* Rojo-Naranja Intenso */
-              orange: '#F26A3D',    /* Naranja Medio */
-              greyblue: '#566970',  /* Gris Azulado */
-              grey: '#ABB5B8',      /* Gris Claro */
-              bg: '#EBF8FE',        /* Azul Pastel Muy Claro */
-            }
-          },
-          animation: {
-            'blob': 'blob 7s infinite',
-            'fade-in': 'fadeIn 0.5s ease-out forwards',
-          },
-          keyframes: {
-            blob: {
-              '0%': { transform: 'translate(0px, 0px) scale(1)' },
-              '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
-              '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
-              '100%': { transform: 'translate(0px, 0px) scale(1)' },
-            },
-            fadeIn: {
-              '0%': { opacity: '0', transform: 'translateY(10px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body {
-      background-color: #EBF8FE; /* vizme.bg */
-      color: #02222F; /* vizme.navy */
-      -webkit-font-smoothing: antialiased;
-    }
-    .glass-panel {
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.6);
-    }
-  </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom": "https://esm.sh/react-dom@18.2.0?deps=react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
-    "lucide-react": "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0",
-    "recharts": "https://esm.sh/recharts@2.12.7?deps=react@18.2.0,react-dom@18.2.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "vite": "https://esm.sh/vite@^7.3.0"
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Vizme",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "description": "Business Intelligence con IA para PyMEs mexicanas. Dashboards, alertas y recomendaciones desde tu Excel.",
+    "url": "https://vizme.com.mx",
+    "offers": [
+      { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free" },
+      { "@type": "Offer", "price": "50", "priceCurrency": "USD", "name": "Pro" }
+    ]
   }
-}
-</script>
+  </script>
 </head>
 <body>
   <div id="root"></div>

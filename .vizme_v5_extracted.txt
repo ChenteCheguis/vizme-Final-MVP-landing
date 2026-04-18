@@ -1,0 +1,1741 @@
+vizme.
+
+Business Intelligence para PyMEs mexicanas
+
+DOCUMENTO MAESTRO · VERSIÓN 5.0
+
+La biblia
+del producto
+
+Arquitectura, modelo de negocio, roadmap y especificación
+técnica completa del sistema que convierte cualquier Excel
+en un dashboard vivo con inteligencia artificial.
+
+P R O P I E TA R I O  FECHA                 E S TA D O
+
+Diego · Fundador      Abril 2026            Congelado v5.0
+                                                                           Confidencial · Diego / Vizme
+
+Índice
+
+Documento de producto oficial · 30 secciones · 5 partes
+
+PARTE I · FUNDAMENTOS
+
+01  Filosofía y visión central de Vizme                                    01
+
+02  El problema que resolvemos                                             02
+
+03  Qué Vizme NO es (anti-producto)                                        03
+
+04  Diferenciación vs Power BI, Tableau, Looker                            04
+
+PARTE II · ARQUITECTURA
+
+05  Las 4 capas del producto                                               05
+
+06  Capa 1 -- Modelado del Negocio                                         06
+
+07  Capa 2 -- Ingesta recurrente                                           07
+
+08  Capa 3 -- Dashboard vivo + insights                                    08
+
+09  Capa 4 -- Inteligencia externa                                         09
+
+10  Refresh vs Regenerate (concepto clave)                                 10
+
+11  Stack técnico oficial                                                  11
+
+12  Modelo de datos (Supabase)                                             12
+
+13  Edge Function: 11 modos                                                13
+
+14  Estrategia de modelos de IA                                            14
+
+PARTE III · MODELO DE NEGOCIO
+
+15  Los 3 tiers: Freemium, Pro, Enterprise                                 15
+
+16  Límites detallados por tier                                            16
+
+17  Unit economics y márgenes reales                                       17
+
+18  Free trial y modelo de conversión                                      18
+
+19  Conectores y estrategia Enterprise                                     19
+
+                           Vizme v5 -- Documento Maestro · Página 2 de 58
+PARTE IV · EXPERIENCIA DEL CLIENTE                                       Confidencial · Diego / Vizme
+
+20  Flujo de onboarding                                                                               20
+                                                                                                      21
+21  Flujo semanal recurrente                                                                          22
+                                                                                                      23
+22  Manejo de errores y casos extremos
+                                                                                                      24
+23  Principios de UX y tono de voz                                                                    25
+                                                                                                      26
+PARTE V · EJECUCIÓN                                                                                   27
+                                                                                                      28
+24  Roadmap de 8 sprints hasta beta                                                                   29
+                                                                                                      30
+25  Roadmap de retención (mes 2 al 10)
+
+26  Riesgos y mitigaciones
+
+27  Lineamientos para trabajar con Claude Code
+
+28  Decisiones congeladas (fuente de verdad)
+
+29  Glosario oficial del proyecto
+
+30  Prompt del Sprint 1 (ejecutable)
+
+                         Vizme v5 -- Documento Maestro · Página 3 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+01 · Filosofía y visión central
+
+PARTE I · FUNDAMENTOS
+
+   Vizme no analiza archivos. Vizme construye un modelo vivo del negocio
+
+    del cliente y lo alimenta con datos nuevos cada periodo.
+
+       -- PRINCIPIO RECTOR DEL PRODUCTO
+
+Esta es la frase que rige todas las decisiones técnicas y de producto de Vizme. Si en algún momento una
+decisión contradice este principio, la decisión está mal tomada. Vizme no es un generador de reportes, no
+es un analizador de Excel, no es un chatbot de datos. Vizme es un sistema que construye un modelo
+semántico del negocio de cada cliente y ese modelo vive, evoluciona y se vuelve más valioso con cada
+dato nuevo que entra.
+
+La visión a 3 años
+
+Que cualquier dueño de PyME mexicana, sin importar su nivel técnico, pueda tener el tipo de inteligencia
+estratégica que hoy solo pueden pagar corporativos de $100M USD en facturación. No con reportes
+estáticos. Con un asistente que conoce su negocio, lo compara contra el mercado, le anticipa problemas y
+le sugiere acciones concretas.
+
+Qué significa "modelo vivo del negocio"
+
+Cuando un cliente sube sus datos a Vizme, lo que sucede internamente no es "parsear un archivo" -- es
+construir y persistir cuatro cosas que perduran para siempre:
+ 1. Un Business Schema -- el modelo conceptual del negocio: qué entidades existen, qué métricas
+
+    importan, qué dimensiones hay.
+ 2. Un conjunto de Extraction Rules -- instrucciones precisas que indican cómo extraer datos de
+
+    archivos futuros sin volver a llamar a la IA.
+ 3. Un Dashboard Blueprint -- el diseño único del panel de control que Claude Opus generó
+
+    específicamente para este negocio.
+ 4. Un Time Series histórico -- el stock acumulado de todos los datos que el cliente ha aportado a lo
+
+    largo del tiempo.
+
+                                              Vizme v5 -- Documento Maestro · Página 4 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+Estos cuatro activos juntos son el "cerebro digital" del negocio del cliente. Son su lock-in. Si deja de
+pagar, pierde todo. Si sigue pagando, cada mes el modelo es más rico y más valioso.
+
+                                              Vizme v5 -- Documento Maestro · Página 5 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+02 · El problema que resolvemos
+
+PARTE I · FUNDAMENTOS
+
+    En México hay cerca de 4.9 millones de PyMEs. El 98% de ellas toma decisiones
+    estratégicas basándose en intuición, no en datos. No es porque no tengan datos -- los
+    tienen en Excels, en sistemas como Aspel o Contpaq, en libretas. Es porque convertir
+    esos datos en información accionable requiere un analista, y un analista cuesta entre
+    $15,000 y $80,000 MXN al mes.
+
+Los tres problemas reales del mercado
+
+Problema 1 -- Las herramientas existentes no son para PyMEs
+
+Power BI, Tableau, Looker Studio son excelentes productos, pero están diseñados para organizaciones
+con analistas de datos. Requieren conocimiento de SQL, DAX, modelado de datos, diseño de
+visualizaciones. El dueño de una barbería, una pizzería o una pequeña empresa de logística no tiene ese
+conocimiento, y no tiene por qué tenerlo.
+
+Problema 2 -- Los consultores son caros y esporádicos
+
+Contratar una consultoría de BI cuesta entre $50,000 y $300,000 MXN por un reporte puntual. Un mes
+después, los datos ya cambiaron y el reporte está obsoleto. No hay continuidad, no hay actualización
+automática, no hay monitoreo.
+
+Problema 3 -- Los "dashboards automáticos" actuales son decepcionantes
+
+Existen herramientas que prometen "dashboards con IA" pero producen plantillas genéricas que no
+entienden el negocio específico. El cliente sube su Excel y recibe gráficas que no corresponden a sus
+métricas reales, con encabezados raros como __EMPTY_2 o columnas mal interpretadas.
+
+     LECCIÓN DIRECTA DEL CASO BARBER MAGIC
+     El propio equipo de Vizme vivió este problema en carne propia cuando intentó procesar el Excel de
+     Barber Magic (343 hojas, métricas reales enterradas en la fila 58 de cada hoja) con el parser genérico
+     original. El dashboard analizó inventario de juguetes en vez de cortes de pelo. Esta experiencia es la que
+     motivó toda la arquitectura v5 descrita en este documento.
+
+                                              Vizme v5 -- Documento Maestro · Página 6 de 58
+                                                                 Confidencial · Diego / Vizme
+
+La oportunidad cuantificada
+
+  4.9M           $999         ~84%                                60s
+
+PYMES EN MÉXICO   MXN/MES    MARGEN BRUTO                            PRIMER
+
+                 ACCESIBLE             PRO                       DASHBOARD
+
+                 Vizme v5 -- Documento Maestro · Página 7 de 58
+                                                                       Confidencial · Diego / Vizme
+
+03 · Qué Vizme NO es (anti-producto)
+
+PARTE I · FUNDAMENTOS
+
+Definir lo que un producto no es es tan importante como definir lo que es. Las siguientes afirmaciones son
+políticas de producto permanentes. Cualquier feature, prompt, decisión o código que contradiga estas
+afirmaciones está mal implementado y debe revertirse.
+
+Vizme NO es                                        Vizme SÍ es
+
+Un generador de reportes PDF que se ve bonito      Un dashboard vivo que refleja la realidad actual del
+                                                   negocio
+
+Un chatbot que responde sobre datos                Un sistema que pre-computa visualizaciones e insights
+                                                   antes de que el cliente pregunte
+
+Una colección de plantillas por vertical           Un motor genérico que diseña un dashboard único por
+                                                   cliente
+
+Un producto que requiere aprender a usarlo         Un producto donde el cliente sube su Excel y ya está
+                                                   funcionando
+
+Un reemplazo de Excel                              Una capa de inteligencia sobre los datos que el cliente
+                                                   ya tiene
+
+Un producto con testimonios inventados o KPIs      Un producto con clientes reales, casos reales, datos
+marketing como "+200 PyMEs"                        reales
+
+Un producto que promete tiempos ("en menos de 90   Un producto que muestra valor instantáneo ("tu
+segundos")                                         dashboard al instante")
+
+Un producto que responde con texto genérico de IA  Un producto que habla en español mexicano, directo, sin
+                                                   rodeos
+
+                       Vizme v5 -- Documento Maestro · Página 8 de 58
+                                                                      Confidencial · Diego / Vizme
+
+04 · Diferenciación vs Power BI, Tableau, Looker
+
+PARTE I · FUNDAMENTOS
+
+Vizme no compite con Power BI, Tableau o Looker Studio. Compite con no tener nada. Compite con la
+libreta, con las decisiones por intuición, con el "luego le pregunto a mi contador".
+
+Sin embargo, es importante entender por qué esas herramientas no sirven para el segmento de Vizme y
+cómo Vizme soluciona lo que ellas no.
+
+Dimensión             Power BI / Tableau / Looker                Vizme
+
+Quién modela los      El cliente (necesita saber SQL, DAX,       Claude Opus 4.7 (el cliente sube archivo
+datos                 modelado dimensional)                      crudo)
+
+Quién diseña el       El cliente o un analista contratado        Claude Opus diseña Blueprint único
+dashboard                                                        automáticamente
+
+Quién interpreta los  El cliente (las gráficas no narran por sí  Claude Sonnet narra en español
+insights              solas)                                     mexicano cada semana
+
+Benchmark             No existe nativamente                      Integración nativa con Google Places +
+competitivo                                                      INEGI + DENUE
+
+Idioma y contexto     Inglés, genérico global                    Español mexicano, contexto PyME,
+                                                                 accionable
+Setup inicial         Semanas o meses con consultor
+                                                                 60 segundos desde que sube el archivo
+Precio mínimo         $10­$70 USD/usuario/mes + setup +
+realista              capacitación                               $999 MXN/mes total, sin setup, sin
+                                                                 capacitación
+Target real           Analistas de datos en empresas
+                      medianas-grandes                           Dueños de PyMEs sin formación técnica
+
+POSICIONAMIENTO OFICIAL
+
+Vizme no es un "Power BI más barato". Es una categoría nueva: el primer producto de BI diseñado
+desde cero para que el modelado, la visualización y la interpretación las haga la IA en lugar del usuario.
+Esta categoría todavía no tiene nombre consolidado en el mercado -- algunos la llaman "AI-native BI",
+
+                      Vizme v5 -- Documento Maestro · Página 9 de 58
+                                                                                                                                            Confidencial · Diego / Vizme
+
+otros "autonomous analytics". Vizme es el primer jugador serio en esta categoría para el mercado
+mexicano.
+
+                                       Vizme v5 -- Documento Maestro · Página 10 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+05 · Las 4 capas del producto
+
+PARTE II · ARQUITECTURA
+
+    Vizme está compuesto por cuatro capas funcionales claramente separadas. Esta
+    separación es intencional y debe preservarse en toda decisión técnica: mezclar
+    responsabilidades entre capas es la raíz del 90% de los bugs de sistemas de BI.
+
+     1 Modelado del Negocio
+                   Se ejecuta UNA vez durante el onboarding · Claude Opus 4.7
+
+El cliente sube su archivo histórico. Claude Opus 4.7 analiza el archivo no para generar un dashboard,
+sino para construir un Business Schema que persiste para siempre. Este schema contiene la identidad
+del negocio, sus entidades, sus métricas, sus dimensiones, reglas de extracción para archivos futuros, y
+qué fuentes externas son relevantes.
+
+     2 Ingesta Recurrente
+                   Se ejecuta cada semana/mes · Cero IA (JavaScript + Haiku solo si hay anomalía)
+
+El cliente sube datos nuevos (o llegan automáticos vía Google Drive / email / formulario). JavaScript
+ejecuta las extraction rules del schema. Los datos limpios se añaden al histórico. Solo si se detecta una
+anomalía estructural se invoca a Haiku para desambiguación.
+
+     3 Dashboard Vivo + Insights Narrados
+                   Refresh ilimitado (cero IA) · Insights: Sonnet · Análisis profundo: Opus mensual
+
+El dashboard persiste entre sesiones. Cada visita lo renderiza con los datos más recientes sin llamar a IA.
+Los insights semanales narrados son generados por Sonnet 4.6 (rápido, barato). El análisis profundo
+mensual (FODA, predicciones, benchmark externo) lo genera Opus 4.6.
+
+     4 Inteligencia Externa
+                   Google Places · INEGI · DENUE · Banxico · Google Trends · Clima
+
+                                             Vizme v5 -- Documento Maestro · Página 11 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+El diferenciador que nadie en el mercado mexicano ofrece nativamente. Al crear el schema, Claude decide
+qué fuentes externas son relevantes para el vertical del cliente. Los análisis se enriquecen con
+benchmarks reales: comparación con competidores en 2 km, tendencias demográficas del INEGI, tipos de
+cambio para negocios con importación, clima para negocios estacionales.
+
+                                             Vizme v5 -- Documento Maestro · Página 12 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+06 · Capa 1 · Modelado del Negocio
+
+PARTE II · ARQUITECTURA
+
+Esta es la capa más crítica del producto. Si el Business Schema se genera mal, todo lo demás está
+condenado a fallar. Por eso aquí se paga por el mejor modelo (Opus 4.7) y se hace solo una vez por
+cliente.
+
+                                             Vizme v5 -- Documento Maestro · Página 13 de 58
+                                                 Confidencial · Diego / Vizme
+
+Anatomía del Business Schema
+
+Vizme v5 -- Documento Maestro · Página 14 de 58
+                                                                                                                                             Confidencial · Diego / Vizme
+
+{
+   "version": 1,
+   "business_identity": {
+       "type": "barbería infantil",
+       "size": "PyME pequeña",
+       "location": "Los Héroes Tecámac, Edo. México",
+       "business_model": "servicios por cita + retail secundario",
+       "detected_vertical_hints": ["servicios personales", "retail local"]
+   },
+   "entities": [
+       {
+          "name": "corte_de_pelo",
+          "description": "Servicio principal del negocio",
+          "attributes": ["tipo_cliente", "fecha", "con_juguete", "precio"]
+       },
+       {
+          "name": "inventario_juguete",
+          "description": "Regalos que se entregan con el corte infantil",
+          "attributes": ["sku", "cantidad", "costo"]
+       }
+   ],
+   "metrics": [
+       {
+          "id": "cortes_semana",
+          "name": "Cortes por semana",
+          "type": "count",
+          "importance": "primary",
+          "healthy_range": [120, 180],
+          "direction": "higher_is_better"
+       }
+   ],
+   "dimensions": [
+       {"id": "tiempo", "levels": ["día", "semana", "mes", "año"]},
+       {"id": "tipo_cliente", "values": ["niño", "adulto", "sin_juguete"]}
+   ],
+   "extraction_rules": [
+       {
+          "metric_id": "cortes_semana",
+          "location": "row_containing_label",
+          "label_match": ["total de cortes", "cortes totales"],
+          "column_offset": 1,
+          "apply_to_sheets": "pattern:semanal_*"
+       }
+   ],
+   "external_sources_relevant": [
+       "google_places.competitors_radius_2km",
+       "inegi.poblacion_infantil_tecamac",
+       "denue.barberias_ojo_de_agua"
+   ],
+   "kpi_targets_inferred": {
+       "cortes_semana": 150,
+
+                                         Vizme v5 -- Documento Maestro · Página 15 de 58
+                                                 Confidencial · Diego / Vizme
+
+       "porcentaje_ninos": 0.65
+   }
+}
+
+Por qué el schema es el activo más valioso
+
+  · Se genera con el modelo más caro (Opus 4.7, ~$1-2 USD)
+  · Define cómo se procesan TODOS los archivos futuros del cliente
+  · Si el cliente deja de pagar, pierde este schema y su histórico asociado
+  · Si el cliente vuelve, todo se restaura instantáneamente
+  · El schema mejora con el tiempo: cada vez que Claude detecta un patrón nuevo, se actualiza (schema
+
+    evolution)
+
+Vizme v5 -- Documento Maestro · Página 16 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+07 · Capa 2 · Ingesta Recurrente
+
+PARTE II · ARQUITECTURA
+
+Esta es la capa que se ejecuta 100× más veces que la Capa 1, por lo que debe ser barata, rápida y
+determinística. La regla de oro aquí: cero IA en el path feliz.
+
+Flujo detallado
+
+ 1. Trigger: Cliente sube archivo / llena formulario / llega archivo vía fuente conectada
+ 2. Validación estructural: JavaScript compara estructura contra schema guardado
+ 3. Extracción determinística: Se ejecutan las extraction_rules del schema
+ 4. Acumulación al histórico: Los datos limpios se insertan en time_series_data
+ 5. Detección de anomalías: Si aparecen columnas nuevas o rangos extremos, se levanta flag
+ 6. Desambiguación (si aplica): Haiku 4.5 genera opciones clickeables para el cliente
+ 7. Actualización de dashboard: Frontend detecta datos nuevos, refresca visualizaciones
+
+     COSTO REAL DE ESTA CAPA
+     En el escenario normal (sin anomalías): $0 en tokens. Solo CPU de Supabase Edge Functions. Esto
+     permite que el cliente suba archivos ilimitadamente en el tier Pro sin comprometer el margen.
+
+Schema Evolution: qué pasa cuando los datos cambian
+
+Los negocios cambian: empiezan a vender productos nuevos, abren sucursales, cambian categorías. El
+schema debe evolucionar con ellos.
+
+                                             Vizme v5 -- Documento Maestro · Página 17 de 58
+                                                 Confidencial · Diego / Vizme
+
+Cambio detectado                   Acción
+Columna nueva en el archivo        Haiku pregunta al cliente: "Veo 'Tipo Premium', ¿es una nueva
+                                   categoría de producto?"
+Valores en nueva unidad            Haiku detecta y pregunta por confirmación
+Caída drástica en métrica          Sonnet genera insight explicando posibles causas
+Hoja con estructura completamente  Escalamiento a Opus para actualizar extraction_rules
+diferente
+Schema no aplica (archivo de otro  Flag de error, se sugiere crear proyecto nuevo
+negocio)
+
+Vizme v5 -- Documento Maestro · Página 18 de 58
+                                                               Confidencial · Diego / Vizme
+
+08 · Capa 3 · Dashboard vivo + insights
+
+PARTE II · ARQUITECTURA
+
+Aquí vive la experiencia visible del cliente. Es donde pasa la mayor parte del tiempo. Por eso debe ser
+instantáneo, hermoso y útil.
+
+Tres niveles de insight (por costo y frecuencia)
+
+Nivel        Qué es                         Quién lo genera    Frecuencia       Costo
+                                            JavaScript /
+Métricas en  KPIs, gráficas, tendencias     Recharts (sin IA)  Cada vez que abre $0
+vivo         visuales                       Sonnet 4.6
+                                                               Al llegar datos  ~$0.05
+Insight      Narrativa corta sobre lo más   Opus 4.6           nuevos           ~$1-2
+semanal      relevante de la semana
+                                                               Mensual o bajo
+Análisis     FODA, predicciones, benchmark                     demanda
+profundo     externo
+
+El Dashboard Blueprint
+
+El Blueprint es la descripción estructural del dashboard, generada una vez por Opus y guardada en DB.
+No contiene datos -- contiene instrucciones sobre cómo renderizar cuando haya datos.
+
+             Vizme v5 -- Documento Maestro · Página 19 de 58
+                                                                                                                                             Confidencial · Diego / Vizme
+
+{
+   "version": 1,
+   "layout": "grid-12",
+   "blocks": [
+       {
+          "id": "hero_kpis",
+          "type": "kpi_row",
+          "position": {"row": 1, "col": 1, "span": 12},
+          "kpis": [
+              {"metric_id": "cortes_semana", "label": "Cortes esta semana",
+                "format": "integer", "delta_vs": "previous_week"},
+              {"metric_id": "ingreso_semanal", "label": "Ingreso estimado",
+                "format": "currency_mxn", "delta_vs": "previous_week"}
+          ]
+       },
+       {
+          "id": "trend_main",
+          "type": "line_chart",
+          "position": {"row": 2, "col": 1, "span": 8},
+          "title": "Cortes por semana (últimos 12 meses)",
+          "x_axis": "semana",
+          "y_axis": "cortes_semana",
+          "comparison_line": "ma_4_weeks"
+       }
+   ]
+
+}
+
+                                         Vizme v5 -- Documento Maestro · Página 20 de 58
+                                                                Confidencial · Diego / Vizme
+
+09 · Capa 4 · Inteligencia externa
+
+PARTE II · ARQUITECTURA
+
+Ningún competidor mexicano ofrece esto nativamente. Es la "salsa secreta" de Vizme.
+
+Fuentes externas integradas
+
+Fuente         Qué aporta                                     Cuándo es relevante
+Google Places  Competidores cercanos, ratings, reseñas,
+API            precios, horarios, tráfico por hora            Negocios con ubicación física
+INEGI          Demografía, poder adquisitivo, tendencias por  (restaurantes, retail, servicios)
+               zona
+DENUE          Directorio nacional de unidades económicas     Decisiones de ubicación, segmentación
+                                                              de clientes
+Banxico        Tipo de cambio, inflación
+                                                              Densidad de competencia, saturación
+Google Trends  Tendencias de búsqueda                         de mercado
+
+OpenWeather    Clima histórico y pronóstico                   Negocios con importación o productos
+SAT / DOF      Cambios fiscales relevantes                    dolarizados
+
+                                                              Validar si el interés en tu producto está
+                                                              subiendo o bajando
+
+                                                              Restaurantes, retail, logística, eventos
+
+                                                              Alertas para todos los negocios
+                                                              formales
+
+Cómo se integra en los insights
+
+EJEMPLO REAL: BARBER MAGIC
+
+"Tu ticket promedio es $180. En un radio de 2 km hay 3 barberías con rating 4.5+: cobran $220-$260.
+Tienes espacio para subir precios. Además, INEGI indica que la población infantil de Los Héroes
+Tecámac creció 8% el año pasado -- tu posición de único especializado en niños se está volviendo más
+valiosa."
+
+               Vizme v5 -- Documento Maestro · Página 21 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+Cache y costos
+
+Las fuentes externas se consultan con cache agresivo ( external_data_cache tabla). Google Places
+tiene límite de queries/día, entonces se cachea por 7 días. INEGI cambia lento (meses), se cachea por 30
+días. Esto mantiene costos bajos y respeta rate limits.
+
+                                             Vizme v5 -- Documento Maestro · Página 22 de 58
+                                                 Confidencial · Diego / Vizme
+
+10 · Refresh vs Regenerate
+
+PARTE II · ARQUITECTURA
+
+    Este es uno de los conceptos más importantes del producto. Confundir Refresh con
+    Regenerate lleva a decisiones técnicas catastróficas para el margen. Cualquier
+    ingeniero, prompt o decisión de producto debe distinguir claramente entre ambos.
+
+ REFRESH                                    REGENERATE
+
+Qué cambia: Los datos                      Qué cambia: La estructura
+Estructura: Se conserva igual              Datos: Se mantienen
+Costo IA: $0                               Costo IA: $0.50 ­ $1
+Tiempo: Milisegundos                       Tiempo: 20-60 segundos
+Frecuencia: Ilimitada                      Frecuencia: Limitada (2/mes Pro)
+Dispara: Upload o automático               Dispara: Cliente explícitamente
+Ejemplo: "Subí el archivo de esta semana"  Ejemplo: "Agrega métrica de margen"
+
+Tres casos en que se dispara Regenerate
+
+ 1. Cambio manual del cliente: "Agrega ticket promedio" o "quita la gráfica de inventario"  Opus
+    actualiza Blueprint
+
+ 2. Cambio automático por schema evolution: Cliente sube archivo con columna nueva  sistema
+    detecta  Opus sugiere agregar al dashboard  cliente confirma
+
+ 3. Regeneración completa: "No me gusta, empieza de cero"  Opus rediseña Blueprint (versión
+    anterior se guarda por si se arrepiente)
+
+Analogía para entender
+
+Refresh es como abrir tu app del banco: misma interfaz, números actualizados.
+Regenerate es como pedirle al diseñador que reorganice la página: nuevos elementos, nueva distribución.
+
+Vizme v5 -- Documento Maestro · Página 23 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+11 · Stack técnico oficial
+
+PARTE II · ARQUITECTURA
+
+Frontend
+
+  · React 18 + TypeScript + Vite -- stack probado, type safety
+  · Tailwind CSS -- consistencia visual, velocidad de desarrollo
+  · Recharts -- visualizaciones, todo renderizado sin IA
+  · Lucide React -- iconografía consistente
+  · React Router v7 -- con lazy loading de rutas
+  · React Hook Form + Zod -- formularios con validación type-safe
+  · react-markdown -- render de insights narrados
+  · react-dropzone -- uploads
+  · jsPDF + pptxgenjs -- exports
+
+Backend
+
+  · Supabase -- Auth + PostgreSQL + Edge Functions + Storage
+  · Deno runtime -- para Edge Functions
+  · Claude API -- Opus 4.7 / Opus 4.6 / Sonnet 4.6 / Haiku 4.5
+  · Stripe -- billing con soporte para MXN
+
+                                             Vizme v5 -- Documento Maestro · Página 24 de 58
+Identidad visual                                                      Confidencial · Diego / Vizme
+
+   Elemento                    Valor
+  Color primario (Navy)         #02222F
+  Acento principal (Coral)      #F54A43
+  Acento secundario (Orange)    #F26A3D
+  Texto secundario (Greyblue)   #566970
+  Fondo suave (Light BG)        #EBF8FE
+  Tipografía                   Inter (todo el producto)
+
+                               Vizme v5 -- Documento Maestro · Página 25 de 58
+                                                                     Confidencial · Diego / Vizme
+
+12 · Modelo de datos (Supabase)
+
+PARTE II · ARQUITECTURA
+
+Tablas existentes (se conservan)
+
+profiles , projects , dashboards ,      analysis_history ,  weekly_entries ,  competitors ,
+notifications , shared_links
+
+Tabla files (se modifica)
+
+Se añaden columnas: structural_map (JSONB), extracted_data (JSONB)
+
+Tablas nuevas v5
+
+ business_schemas -- el activo central
+
+CREATE TABLE business_schemas (
+
+id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id    uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+version       int NOT NULL DEFAULT 1,
+
+business_identity jsonb NOT NULL,
+
+entities      jsonb NOT NULL,
+
+metrics       jsonb NOT NULL,
+
+dimensions    jsonb NOT NULL,
+
+extraction_rules jsonb NOT NULL,
+
+external_sources jsonb NOT NULL,
+
+kpi_targets   jsonb,
+
+model_used    text NOT NULL,
+
+tokens_input  int,
+
+tokens_output int,
+
+created_at    timestamptz DEFAULT now(),
+
+updated_at    timestamptz DEFAULT now(),
+
+UNIQUE(project_id, version)
+
+);
+
+                    Vizme v5 -- Documento Maestro · Página 26 de 58
+                                                                          Confidencial · Diego / Vizme
+
+dashboard_blueprints
+
+CREATE TABLE dashboard_blueprints (
+
+id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+schema_id uuid REFERENCES business_schemas(id),
+
+version     int NOT NULL DEFAULT 1,
+
+layout      jsonb NOT NULL,
+
+blocks      jsonb NOT NULL,
+
+is_active boolean DEFAULT true,
+
+regenerated_reason text,
+
+created_at timestamptz DEFAULT now()
+
+);
+
+time_series_data -- histórico acumulado
+
+CREATE TABLE time_series_data (
+
+id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+metric_id   text NOT NULL,
+
+dimension_values jsonb,
+
+value       numeric,
+
+period_start timestamptz NOT NULL,
+
+period_end  timestamptz,
+
+source_file_id uuid REFERENCES files(id),
+
+created_at  timestamptz DEFAULT now()
+
+);
+
+CREATE INDEX idx_tsd_project_metric_period
+
+ON time_series_data(project_id, metric_id, period_start DESC);
+
+insights -- narrativa persistente
+
+CREATE TABLE insights (
+
+id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+type        text NOT NULL, -- weekly | monthly | alert | anomaly
+
+title       text NOT NULL,
+
+content     text NOT NULL, -- markdown
+
+data_snapshot jsonb,
+
+model_used  text,
+
+generated_at timestamptz DEFAULT now(),
+
+read_at     timestamptz,
+
+priority    int DEFAULT 0
+
+);
+
+                         Vizme v5 -- Documento Maestro · Página 27 de 58
+                                                                       Confidencial · Diego / Vizme
+
+external_data_cache
+
+CREATE TABLE external_data_cache (
+
+id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+source    text NOT NULL, -- google_places | inegi | denue | etc
+
+query_key text NOT NULL, -- hash de parámetros
+
+query_params jsonb,
+
+response  jsonb NOT NULL,
+
+fetched_at timestamptz DEFAULT now(),
+
+expires_at timestamptz NOT NULL,
+
+UNIQUE(project_id, source, query_key)
+
+);
+
+schema_evolution_log
+
+CREATE TABLE schema_evolution_log (
+
+id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+old_version int NOT NULL,
+
+new_version int NOT NULL,
+
+change_type text NOT NULL,
+
+description text,
+
+triggered_by uuid REFERENCES files(id),
+
+changed_at timestamptz DEFAULT now()
+
+);
+
+data_connectors -- fuentes conectadas
+
+CREATE TABLE data_connectors (
+
+id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+
+type      text NOT NULL, -- google_drive | dropbox | gmail | whatsapp
+
+credentials jsonb NOT NULL, -- encrypted
+
+config    jsonb,
+
+is_active boolean DEFAULT true,
+
+last_sync_at timestamptz,
+
+created_at timestamptz DEFAULT now()
+
+);
+
+                      Vizme v5 -- Documento Maestro · Página 28 de 58
+                                                                      Confidencial · Diego / Vizme
+
+13 · Edge Function: 11 modos
+
+PARTE II · ARQUITECTURA
+
+La Edge Function analyze-data es el cerebro del backend. Opera en modos claramente diferenciados.
+Cada modo tiene responsabilidad única y usa el modelo adecuado.
+
+Modo                        Modelo       Disparador                   Costo aprox
+ build_schema               Opus 4.7     Primer archivo (onboarding)  $1-2
+ build_dashboard_blueprint  Opus 4.7     Post schema, o regenerate    $0.50-1
+ ingest_data                JS (sin IA)  Archivo recurrente           $0
+ detect_anomaly             Haiku 4.5    Detección flag               $0.01
+ narrate_insight_weekly     Sonnet 4.6   Datos nuevos                 $0.05
+ analyze_internal           Opus 4.6     Mensual / demand             $0.55
+ analyze_external           Opus 4.6     Mensual / demand             $0.40
+ predict                    Opus 4.6     Mensual / demand             $0.50
+ chat                       Sonnet 4.6   Mensajes en copiloto         $0.04/msg
+ fetch_external             JS + APIs    Análisis externo             Google API $
+ regenerate_block           Opus 4.7     Cliente pide cambio puntual  $0.30
+
+Vizme v5 -- Documento Maestro · Página 29 de 58
+                                                                               Confidencial · Diego / Vizme
+
+14 · Estrategia de modelos de IA
+
+PARTE II · ARQUITECTURA
+
+Principio general: modelo más barato que cumpla el nivel de calidad
+
+Un error común es usar Opus para todo "por seguridad". Esto destruye el margen. La regla correcta es:
+usar el modelo más barato que no comprometa la calidad percibida por el cliente.
+
+Asignación definitiva
+
+Tarea                         Modelo      Razón
+Construir Business Schema     Opus 4.7    Decisión crítica, una sola vez por cliente
+Diseñar Dashboard Blueprint   Opus 4.7    Diseño único, debe ser excelente
+Regenerate Blueprint          Opus 4.7    Cambio estructural crítico
+Análisis FODA mensual         Opus 4.6    Profundidad + economía
+Predicciones                  Opus 4.6    Razonamiento multi-step
+Análisis externo + benchmark  Opus 4.6    Síntesis de múltiples fuentes
+Insights semanales narrados   Sonnet 4.6  Velocidad + suficiente calidad
+Chat copiloto                 Sonnet 4.6  Tiempo real, calidad conversacional
+Desambiguación en ingesta     Haiku 4.5   Barato, rápido, suficiente
+Detección de anomalías        Haiku 4.5   Alta frecuencia
+
+Prompt caching -- obligatorio en V5
+
+El Business Schema del cliente debe cachearse en todas las llamadas subsecuentes (análisis, insights,
+chat). Esto reduce el costo de input hasta 90% en los tokens repetidos. Esta optimización es la diferencia
+entre $12/mes y $5/mes por cliente.
+
+                              Vizme v5 -- Documento Maestro · Página 30 de 58
+                                                             Confidencial · Diego / Vizme
+
+15 · Los 3 tiers
+
+PARTE III · MODELO DE NEGOCIO
+
+FREEMIUM                       PRO                           ENTERPRISE
+
+Gratis                         $999                          Contáctanos
+
+Sin tarjeta                    MXN/mes                       Precio personalizado
+ 1 proyecto
+ Archivos hasta 2 MB            Hasta 3 proyectos             Conexión a tus sistemas
+ 3 cargas totales               Archivos hasta 25 MB          Todo del Pro, sin límites
+ Dashboard IA (1 vez)           Cargas ilimitadas             Onboarding personalizado
+ Chat copiloto: 10 mensajes     Regenerate 2/mes              Multi-sucursal
+ Historial 30 días              Análisis FODA, predicciones   Consultor asignado
+ Marca Vizme visible            Benchmark externo (10         SLA garantizado
+                                                              Integraciones a medida
+                                   competidores)
+                                Insights semanales narrados
+                                Chat: 150 mensajes/mes
+                                Conectores: Drive, Sheets,
+
+                                   email, WhatsApp
+                                Export PDF ilimitado
+                                Alertas por email
+
+POSICIONAMIENTO DE ENTERPRISE EN LA LANDING
+
+Enterprise NO aparece en la tabla comparativa con Freemium y Pro. Se presenta como un CTA
+separado: "¿Tus datos viven en un CRM, un ERP o un sistema propio? ¿Quieres que nosotros nos
+conectemos? Contáctanos." Esto deja claro que Enterprise es un servicio humano + tecnológico
+negociado caso por caso, no un tier estándar. El precio real se negocia directamente.
+
+Vizme v5 -- Documento Maestro · Página 31 de 58
+                                                 Confidencial · Diego / Vizme
+
+16 · Límites detallados por tier
+
+PARTE III · MODELO DE NEGOCIO
+
+Vizme v5 -- Documento Maestro · Página 32 de 58
+                                                                       Confidencial · Diego / Vizme
+
+Característica        Freemium     Pro                                 Enterprise
+Proyectos             1
+simultáneos                        3                                   Ilimitados
+Tamaño máximo         2 MB
+archivo                            25 MB                               500 MB
+Cargas totales / por  3 total
+mes                                Ilimitadas                          Ilimitadas
+Dashboard IA           (1                                              
+personalizado         generación)
+Regenerate del        --           2/mes                               Ilimitado
+dashboard
+Análisis FODA         --           1/mes auto + on-demand              Ilimitado
+Análisis externo +    --            (hasta 10 competidores)            Ilimitado
+competidores
+Predicciones          --           Mensual                             Ilimitado
+Insights semanales    --                                               
+Chat copiloto         10 msgs      150 msgs/mes                        Ilimitado
+                      totales
+Historial de datos    30 días      Ilimitado                           Ilimitado
+Export PDF            --
+Conectores incluidos  Upload       Ilimitado                           Ilimitado
+                      manual
+Usuarios invitados    --           Drive, Dropbox, OneDrive, Sheets,   Custom (Odoo, Aspel, SAP,
+read-only                          Gmail forwarding, WhatsApp          Shopify, CFDIs SAT, etc.)
+Alertas por email     --
+Soporte               FAQ          1                                   Ilimitado
+
+                                                                        + SMS/WhatsApp
+                                   Email
+                                                                       Slack dedicado / WhatsApp
+                                                                       Business
+
+                      Vizme v5 -- Documento Maestro · Página 33 de 58
+                                                                 Confidencial · Diego / Vizme
+
+Característica  Freemium     Pro                                 Enterprise
+                Best effort  99% informativo                     99.5% garantizado
+SLA uptime      Visible      Removible                           White label posible
+
+Marca Vizme en
+dashboard
+
+REGLA DE ESCALAMIENTO PRO  ENTERPRISE
+
+Si un cliente Pro pide una integración que no está en la lista (ej: Odoo, SAP, CFDIs del SAT, un ERP
+propietario, conexión directa a su base de datos), la respuesta automática del producto es: "Esa
+integración forma parte del plan Enterprise. ¿Quieres que te contactemos?" Nunca se intenta construir
+integraciones custom dentro del tier Pro, porque mata el margen.
+
+                Vizme v5 -- Documento Maestro · Página 34 de 58
+                                                      Confidencial · Diego / Vizme
+
+17 · Unit economics y márgenes reales
+
+PARTE III · MODELO DE NEGOCIO
+
+Cliente Pro promedio -- mes 1 (onboarding)
+
+Concepto                           Modelo / Servicio  Costo USD
+Build Schema inicial               Opus 4.7           $1.25
+Build Dashboard Blueprint          Opus 4.7           $0.78
+Análisis FODA mes 1                Opus 4.6           $0.55
+Análisis externo (Google + INEGI)  Opus 4.6           $0.40
+Predicciones mes 1                 Opus 4.6           $0.50
+Insights semanales (4×)            Sonnet 4.6         $0.42
+Chat copiloto (~50 msgs)           Sonnet 4.6         $2.10
+Google Places API                  Google Cloud       $0.50
+Supabase infra                     Supabase Pro       $2.00
+Stripe fees                        Stripe             $2.00
+COSTO TOTAL MES 1                                     $10.50
+
+Vizme v5 -- Documento Maestro · Página 35 de 58
+                                                                Confidencial · Diego / Vizme
+
+Cliente Pro -- mes 2 en adelante (con prompt caching)
+
+Concepto                                                        Costo USD
+Ingesta recurrente (cero IA)                                    $0
+Re-análisis mensual con Opus (cached)                           $2.50
+Insights semanales + chat                                       $2.50
+Supabase + Google API                                           $2.50
+Stripe fees                                                     $2.00
+COSTO TOTAL MES 2+                                              $9.50
+
+  $50           $9.50                   $40.50                    81%
+
+VENTA USD/MES  COSTO USD/MES           MARGEN USD/MES           MARGEN BRUTO
+
+Un margen bruto del 81% en estado recurrente es excepcional para SaaS. Esto permite que Vizme pueda
+invertir agresivamente en adquisición (ads, partnerships) sin comprometer la viabilidad financiera.
+
+Punto de equilibrio aproximado
+
+Con costos fijos mensuales estimados (salarios, infraestructura base, herramientas) de $3,000-5,000 USD/
+mes al inicio, el punto de equilibrio se alcanza con aproximadamente 75-125 clientes Pro activos. Meta
+razonable: alcanzar este número en mes 6-9 post-lanzamiento.
+
+               Vizme v5 -- Documento Maestro · Página 36 de 58
+                                                  Confidencial · Diego / Vizme
+
+18 · Free trial y modelo de conversión
+
+PARTE III · MODELO DE NEGOCIO
+
+Dos caminos de entrada
+
+CAMINO A -- FREEMIUM                              CAMINO B -- PRO TRIAL 30D
+Fricción: cero (no pide tarjeta)                  Fricción: tarjeta requerida
+Audiencia: curiosos, exploradores                 Audiencia: decidida, lista a comprar
+Límites duros: 3 cargas, sin análisis, historial  Acceso: Pro completo por 30 días
+30d                                               Conversión esperada: 55-70%
+Conversión esperada: 5-8% a Pro
+
+Mecánica del trial Pro 30 días
+
+  · Cliente registra tarjeta en el signup
+  · Acceso completo a features Pro por 30 días
+  · Recordatorio día 25: "Tu trial termina en 5 días, puedes cancelar cuando quieras"
+  · Día 30: primer cobro automático de $999 MXN
+  · Cancelación debe ser 1-click desde el dashboard, sin fricción
+  · Post-cancelación: histórico accesible en read-only por 90 días
+
+Conversión Freemium  Pro
+
+En el Freemium, el objetivo es crear deseo tangible:
+  · Las secciones Pro aparecen pero están blureadas con CTA claro
+  · Después de la 2ª carga, banner sutil: "Con Pro tu historial no tiene límite"
+  · El análisis FODA aparece como "preview" de 1-2 párrafos, el resto bloqueado
+  · Los competidores aparecen en mapa pero sin detalles de precios/reseñas
+
+     NO ES "PAYWALL AGRESIVO" -- ES "PREVIEW HONESTO"
+
+Vizme v5 -- Documento Maestro · Página 37 de 58
+                                                                                                                                            Confidencial · Diego / Vizme
+
+La diferencia es crítica. El cliente NO debe sentirse engañado ("me prometiste X y no me lo diste"). Debe
+sentir que está viendo un producto real y completo, y que está eligiendo si pagar por más. Nunca hay
+features "fake" o textos como "upgrade para desbloquear" en features que el Freemium nunca tuvo.
+
+                                       Vizme v5 -- Documento Maestro · Página 38 de 58
+                                                                    Confidencial · Diego / Vizme
+
+19 · Conectores y estrategia Enterprise
+
+PARTE III · MODELO DE NEGOCIO
+
+Conectores incluidos en Pro (desde lanzamiento)
+
+Estos son los conectores que cubren el 80% de los casos y son técnicamente rentables dentro del margen
+Pro:
+
+Conector           Cómo funciona                                                   Complejidad
+Google Drive       OAuth, cliente da permiso a 1 carpeta, Vizme revisa cada noche  Baja
+Dropbox            Similar: OAuth + carpeta monitoreada                            Baja
+OneDrive           Microsoft Graph API                                             Baja
+Google Sheets      API nativa, cliente comparte sheet con cuenta Vizme             Baja
+Gmail forwarding   Cliente reenvía reportes a reportes@cliente.vizme.com.mx        Muy baja
+WhatsApp Business  Cliente manda Excel a número Vizme, se procesa                  Media
+
+                   Vizme v5 -- Documento Maestro · Página 39 de 58
+                                                                         Confidencial · Diego / Vizme
+
+Conectores Enterprise (negociados caso por caso)
+
+Sistema                Método típico
+Odoo                   API nativa + custom mapping
+Aspel (SAE, COI, NOI)  Export programado + email automation
+Contpaq                ADD-INs o exports programados
+SAP Business One       Service Layer API
+Shopify                Admin API (podría promoverse a Pro en el futuro)
+WooCommerce            REST API
+Mercado Libre          API nativa
+CFDIs del SAT          RFC + e.firma + portal SAT (muy valioso)
+ERP/DB propietario     Custom, SLA negociado
+
+FILOSOFÍA ENTERPRISE: SERVICIO HUMANO + TECNOLOGÍA
+
+Enterprise NO significa "tenemos un conector mágico". Significa: "Tu equipo de Vizme se asegura de que
+los datos lleguen. Cómo, es nuestro problema, no el tuyo." En la mayoría de casos esto es automation
+con herramientas simples (exports programados + email + carpetas compartidas). Solo en casos
+específicos se desarrollan conectores custom, y eso se cotiza aparte como setup fee.
+
+                       Vizme v5 -- Documento Maestro · Página 40 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+20 · Flujo de onboarding
+
+PARTE IV · EXPERIENCIA DEL CLIENTE
+
+    El onboarding es el momento más crítico del producto. Si el cliente no tiene su "wow
+    moment" dentro de los primeros 2 minutos, lo perdemos. Cada segundo y cada click
+    cuenta.
+
+Flujo completo (primera vez, ~3-5 minutos)
+
+ 1. Landing: ve demo real funcionando  click en "Empieza gratis"
+ 2. Signup: email + password (o Google OAuth). Elige Freemium o Pro trial.
+ 3. Wizard de proyecto (2 pasos):
+
+        Paso 1: nombre del negocio + subida de archivo
+        Paso 2: pregunta que quiere resolver (opcional, ayuda a Opus)
+ 4. Pantalla "Analizando tu negocio":
+        Animación con progreso real (no fake)
+        Texto dinámico: "Detectando estructura..."  "Identificando métricas..."  "Diseñando tu
+
+         dashboard..."
+        Duración real: 30-60 segundos con Opus 4.7
+ 5. Confirmación del schema:
+        Claude presenta: "Detecté que tu negocio es [X]. Mido estas N métricas: [lista]."
+        Cliente confirma o ajusta con botones clickeables
+ 6. Dashboard se revela con datos históricos y el primer insight narrado
+ 7. Tour guiado opcional (3 pasos, skip siempre disponible)
+
+Momentos "wow" intencionales
+
+  · Wow 1 (segundo 60): "Tu negocio mide X, Y, Z"  el cliente siente que Vizme "entiende"
+  · Wow 2 (segundo 90): dashboard completo aparece con sus datos reales, no un placeholder
+  · Wow 3 (minuto 2): primer insight narrado ("La semana 32 fue tu mejor semana del año; los martes son
+
+    tu día débil desde hace 6 meses")
+
+                                             Vizme v5 -- Documento Maestro · Página 41 de 58
+                                                                                                                                              Confidencial · Diego / Vizme
+
+· Wow 4 (minuto 3): benchmark externo: "En 2 km de ti hay N competidores; tu ticket está $X abajo del
+ promedio"
+
+                                          Vizme v5 -- Documento Maestro · Página 42 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+21 · Flujo semanal recurrente
+
+PARTE IV · EXPERIENCIA DEL CLIENTE
+
+El flujo semanal es donde se construye el hábito y la retención. Debe ser tan simple que el cliente lo haga
+sin pensar.
+
+Opción A -- Upload manual (mayoría)
+
+ 1. Cliente entra a dashboard  ve estado actual
+ 2. Botón prominente: "Subir datos de esta semana"
+ 3. Drag & drop del archivo
+ 4. Procesamiento: 2-5 segundos (sin IA)
+ 5. Dashboard se actualiza con números nuevos
+ 6. Si aplica: insight narrado aparece: "Subiste 8% vs semana pasada. Mejor martes en 3 meses."
+
+Opción B -- Formulario rápido (para quien no tiene Excel)
+
+Vizme genera un formulario dinámicamente basado en el schema del cliente. Ejemplo para Barber Magic:
+  · "¿Cuántos cortes esta semana?"  input numérico
+  · "¿De ellos, cuántos niños?"  input numérico
+  · "¿Ingresos aproximados?"  input moneda
+  · Guardar  dashboard se actualiza
+
+Opción C -- Automático (con conector)
+
+  · Cliente conectó Google Drive en onboarding
+  · Cada noche Vizme revisa la carpeta
+  · Si hay archivo nuevo, lo procesa automáticamente
+  · Al día siguiente, el cliente entra y ya están los datos
+  · Email/push notification: "Hay datos nuevos en Vizme"
+
+                                             Vizme v5 -- Documento Maestro · Página 43 de 58
+                                                                                       Confidencial · Diego / Vizme
+
+22 · Manejo de errores y casos extremos
+
+PARTE IV · EXPERIENCIA DEL CLIENTE
+
+     POLÍTICA ABSOLUTA: CERO PANTALLAS EN BLANCO
+     Todo error debe tener mensaje humano, contextual, en español mexicano, con acción recomendada. Una
+     pantalla en blanco es un bug crítico. Un "Error 500: Internal Server Error" es un bug crítico.
+
+Catálogo de errores y respuestas
+
+Situación           Mensaje al cliente                                                   Acción
+                                                                                         siguiente
+
+Archivo muy         "Tu archivo pesa más de 25 MB. En Pro puedes subir hasta 25 MB. Si   CTA a
+grande              tu archivo es más pesado, podemos ayudarte desde Enterprise."        Enterprise
+
+Archivo corrupto    "No pude leer tu archivo. ¿Puedes intentar guardarlo de nuevo        Retry
+                    como .xlsx y volver a subirlo?"
+
+Opus no identifica  "Necesito un poco más de contexto. ¿Podrías contarme en una frase    Input libre 
+el negocio          qué tipo de negocio tienes?"                                         reintento
+
+Schema evolution    "Detecté algo nuevo en tu archivo: [descripción]. ¿Quieres que lo    Sí / No / Detalle
+detectada           agregue al dashboard?"
+
+Sin conexión a      "Estamos experimentando lentitud. Estamos trabajando en ello. Tus    Auto-retry
+Claude API          datos están a salvo."
+
+Límite del tier     "Usaste tus 3 cargas del Freemium. Con Pro tienes cargas ilimitadas." CTA a Pro
+alcanzado
+
+Archivo con solo 1  "Para darte un dashboard útil necesito al menos 4 semanas de datos.  Retry con nuevo
+registro            ¿Tienes un archivo con histórico?"                                   archivo
+
+                    Vizme v5 -- Documento Maestro · Página 44 de 58
+                                                 Confidencial · Diego / Vizme
+
+23 · Principios de UX y tono de voz
+
+PARTE IV · EXPERIENCIA DEL CLIENTE
+
+Tono de voz oficial de Vizme
+
+  · Español mexicano -- "ahorita", "chingón" (en contextos adecuados), "cuate" no
+  · Directo, sin rodeos -- va al punto
+  · Honesto -- si algo no se puede, lo dice claro
+  · Útil, no genérico -- números concretos, no "tu negocio va bien"
+  · Respetuoso del tiempo -- no explica lo obvio
+  · Con personalidad -- no texto plano de corporativo
+
+Ejemplos: frío vs correcto
+
+ NO HACER                                       SÍ HACER
+
+"Tu negocio muestra un desempeño favorable     "Semana chida: +12% vs promedio. Los
+en el período analizado, con tendencias        martes siguen arrastrados, ahí te conviene ver
+positivas en diversas métricas."               qué hacer."
+
+ NO HACER                                       SÍ HACER
+
+"Su análisis estará disponible en menos de 90  "Tu dashboard, al instante."
+segundos."
+
+Principios visuales
+
+  · Datos densos, texto escaso -- el cliente viene a ver números, no a leer
+  · Jerarquía clara -- lo más importante (KPIs principales) ocupa más espacio
+  · Colores con significado -- Coral para lo crítico, no decorativo
+  · Cero iconos genéricos -- si un icono no agrega información, no va
+  · Mobile-friendly pero desktop-first -- el cliente analiza en la laptop
+  · Cero ilustraciones genéricas de IA -- nada de "robot sonriente" o "manos saliendo del celular"
+
+Vizme v5 -- Documento Maestro · Página 45 de 58
+                                                                         Confidencial · Diego / Vizme
+
+24 · Roadmap de 8 sprints hasta beta
+
+PARTE V · EJECUCIÓN
+
+Cada sprint son 5 días laborables (una semana) en dedicación full-time, o 10 días laborables (dos
+semanas) a tiempo parcial. Al final de cada sprint debe haber algo funcional y probable.
+
+Sprint 1 Cimientos de datos                                              Semana 1
+
+Objetivo: Preparar la base de datos v5 completa.
+
+Entregables: Migraciones de todas las tablas nuevas ( business_schemas ,
+
+dashboard_blueprints ,  time_series_data ,        insights ,             external_data_cache ,
+
+schema_evolution_log , data_connectors ). Tipos TypeScript en v5types.ts . RLS policies
+
+correctas. Tests básicos de inserción/consulta.
+
+Sprint 2 Motor de schema (corazón del sistema)                           Semana 2
+
+Objetivo: Que Opus 4.7 pueda construir un Business Schema válido a partir de cualquier archivo
+Excel/CSV.
+
+Entregables: Modo build_schema en Edge Function. Función buildFileDigest que genera
+digest completo (todas las filas de hojas ejemplo + filas notables de todas las hojas). Prompt
+maestro genérico (NO menciona ninguna industria). Validación del schema generado contra
+schema. Test end-to-end con el archivo de Barber Magic -- debe identificar métricas correctas.
+
+Sprint 3 Wizard simplificado + Ingesta recurrente                        Semana 3
+
+Objetivo: Que el cliente pueda crear proyecto, subir archivo histórico, y luego subir archivos nuevos
+cada semana.
+
+Entregables: Wizard de 2 pasos (nombre + archivo, pregunta + contexto). Modo ingest_data que
+usa las extraction_rules del schema. Modo detect_anomaly con Haiku. UI de resultados de
+ingesta con preguntas clickeables si hay ambigüedad.
+
+                        Vizme v5 -- Documento Maestro · Página 46 de 58
+                                                   Confidencial · Diego / Vizme
+
+Sprint 4 Dashboard Blueprint + Render              Semana 4
+
+Objetivo: Que Opus diseñe un Blueprint único por cliente y el frontend lo renderice sin llamar a IA.
+
+Entregables: Modo build_dashboard_blueprint con Opus 4.7. Componente V5Dashboard que
+lee Blueprint + datos y renderiza con Recharts. Soporte para todos los tipos de block (kpi_row,
+line_chart, bar_chart, heatmap, etc.). Lógica de Refresh: al subir datos nuevos, dashboard se
+actualiza automáticamente sin IA.
+
+Sprint 5 Insights narrados + Regenerate            Semana 5
+
+Objetivo: Que Sonnet genere insights narrados semanales, y que el cliente pueda pedir cambios
+estructurales al dashboard.
+
+Entregables: Modo narrate_insight_weekly con Sonnet 4.6. Feed de insights en dashboard.
+Modo regenerate_block con Opus para cambios puntuales. UI conversacional: "Agrega métrica
+de X"  regenerate  confirmación.
+
+Sprint 6 Análisis profundo + Inteligencia externa  Semana 6
+
+Objetivo: Que Vizme tenga análisis mensuales tipo consultoría y benchmarks externos reales.
+
+Entregables: Modos analyze_internal , analyze_external , predict con Opus 4.6.
+Integración Google Places API con cache. Integración INEGI/DENUE básica. Página de Análisis IA
+con 4 tabs: FODA, Cadena de Valor, Externo, Predicciones. Export a PDF.
+
+Sprint 7 Tiers, gating y Stripe                    Semana 7
+
+Objetivo: Monetización real con los 3 tiers funcionando.
+
+Entregables: Tabla subscriptions . Middleware que valida tier antes de cada llamada a Edge
+Function. UI de upgrade con pantalla de pago Stripe. Trial Pro de 30 días con tarjeta. Freemium sin
+tarjeta. Enterprise como CTA separado a formulario de contacto. Sistema de límites (cargas,
+mensajes chat, regenerates).
+
+Vizme v5 -- Documento Maestro · Página 47 de 58
+                                                 Confidencial · Diego / Vizme
+
+Sprint 8 Landing + Onboarding pulido + Beta      Semana 8
+
+Objetivo: Producto listo para lanzar a los primeros clientes reales.
+
+Entregables: Landing con demo en vivo (dashboard pre-generado real, no mockup). Hero sin texto
+inflado, sin testimonios falsos, sin ROI calculadora. Flujo completo signup  onboarding  wow.
+Conectores básicos funcionando (Drive + Gmail forwarding mínimo). Sistema de feedback in-app
+(thumbs up/down en cada insight). Preparar lista de primeros 10 clientes beta para invitar.
+
+Vizme v5 -- Documento Maestro · Página 48 de 58
+                                                        Confidencial · Diego / Vizme
+
+25 · Roadmap de retención (mes 2 al 10)
+
+PARTE V · EJECUCIÓN
+
+Después de la beta, el objetivo cambia: ya no es "hacer que funcione", es "hacer que se quede". Cada
+mes tiene un tema de retención.
+
+Mes    Feature                                      Por qué retiene
+Mes 2  Alertas inteligentes de competidores         "Sé más de mis competidores que ellos
+                                                    mismos"
+Mes 3  Predicciones con ML simple + escenarios      "Vizme me dijo que iba a bajar en febrero"
+Mes 4  Comparador multi-sucursal                    Upsell natural a dueños con varios negocios
+Mes 5  Conectores Shopify, WooCommerce              Remueve fricción de carga
+Mes 6  Reportes automáticos por email y WhatsApp    "No tengo que abrir Vizme, me llega"
+Mes 7  Copiloto por voz vía WhatsApp                Engagement diario
+Mes 8  Recomendaciones accionables con ROI          "Vizme me sugirió subir precios, gané más"
+       estimado
+Mes 9  Marketplace de benchmarks anónimos (opt-in)  Network effects
+Mes    Modo agencia (contador con 20 negocios)      Expansión B2B2C
+10
+
+       Vizme v5 -- Documento Maestro · Página 49 de 58
+                                                                            Confidencial · Diego / Vizme
+
+26 · Riesgos y mitigaciones
+
+PARTE V · EJECUCIÓN
+
+Riesgo                     Probabilidad Impacto Mitigación
+
+Opus genera schemas        Media  Alto   Fallback Wizard of Oz + mejora iterativa del
+malos con archivos raros
+                                         prompt con casos reales
+
+Cliente abusa del chat     Alta   Medio  Límite de 150 msgs/mes Pro, Haiku para chat
+                                         básico
+copiloto
+
+Archivos gigantes que      Media  Alto   Pre-procesamiento JS + límite 25 MB Pro +
+queman Opus
+                                         escalamiento a Enterprise
+
+Google Places API costos   Media  Medio  Cache agresivo 7 días + límite 10 competidores
+crecen fuera de control                  Pro
+
+Cliente no sabe cómo usar  Alta   Alto   Onboarding de 2 pasos + wow moment en 60s +
+
+Vizme                                    tour opcional
+
+Competidor internacional   Baja   Alto   Diferenciadores locales: INEGI, DENUE,
+entra a México
+                                         WhatsApp, español mexicano, Google Places MX
+
+Claude API cambia precios  Baja   Medio  Prompt caching + batch API + diversificación
+a la alza                                eventual a otros proveedores
+
+Churn alto después de mes  Media  Alto   Insights semanales + hábito + lock-in vía histórico
+1
+                                         acumulado
+
+Claude Code improvisa y    Alta   Alto   Prompts quirúrgicos con checklist ordenado +
+
+rompe arquitectura                       este documento maestro como fuente de verdad
+
+                           Vizme v5 -- Documento Maestro · Página 50 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+27 · Lineamientos para trabajar con Claude Code
+
+PARTE V · EJECUCIÓN
+
+Claude Code es una herramienta poderosa pero tiende a improvisar. Estos lineamientos son obligatorios
+en cada prompt que se le dé.
+
+Reglas de oro
+
+ 1. Siempre darle contexto de este documento maestro. Cada sesión empieza con: "Lee el documento
+    maestro de Vizme v5 antes de empezar."
+
+ 2. Prompts con checklist numerado. No párrafos vagos -- listas ordenadas que debe seguir al pie de la
+    letra.
+
+ 3. Instrucciones explícitas de "NO hagas X". Claude Code mejora si le dices qué no hacer, no solo qué
+    hacer.
+
+ 4. Un sprint = un objetivo. Nunca pedirle dos sprints en un solo prompt.
+ 5. Validación al final. Cada prompt termina con un bloque "Cómo verificar que funciona" que Claude
+
+    Code debe ejecutar.
+ 6. Commits pequeños. Instruirle a hacer commit después de cada item del checklist, no al final.
+ 7. Prohibir hardcoding. Ninguna variable de negocio ("barbería", "cortes", "Barber Magic") debe
+
+    aparecer en el código.
+ 8. Tests siempre. Después de escribir código, instruir a escribir 1-2 tests básicos.
+
+Estructura de prompt ideal
+
+ 1. Contexto: referencia al documento maestro + sprint actual + estado previo
+ 2. Objetivo: 1 oración clara
+ 3. Pre-requisitos: qué debe existir antes de empezar
+ 4. Checklist numerado: pasos en orden estricto
+ 5. Restricciones: qué NO hacer
+ 6. Criterios de completitud: cómo saber que terminó bien
+ 7. Tests a correr al final: validación específica
+
+                                             Vizme v5 -- Documento Maestro · Página 51 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+28 · Decisiones congeladas
+
+PARTE V · EJECUCIÓN
+
+    Estas son las decisiones ya tomadas y que no se re-discuten. Si durante ejecución
+    surge una propuesta que contradice algo aquí, se rechaza por default. Solo se reabre
+    con discusión explícita entre Diego y el equipo.
+
+                                             Vizme v5 -- Documento Maestro · Página 52 de 58
+                                                                           Confidencial · Diego / Vizme
+
+#  Decisión                     Valor congelado
+                                Dashboard vivo + insights narrados recurrentes
+1 Unidad de valor del producto  Motor 100% genérico, Opus diseña Blueprint único por cliente
+
+2 Approach técnico para el      Código (Recharts) -- no IA en cada render
+         análisis               Opus 4.7 crítico / Opus 4.6 profundo / Sonnet 4.6 narrativo/chat / Haiku
+                                4.5 anomalías
+3 Renderizado de dashboards     Obligatorio en todas las llamadas post-onboarding
+                                Freemium gratis / Pro $999 MXN / Enterprise custom
+4 Modelos de IA                 CTA separado, NO en tabla comparativa
+                                Opcional: Freemium sin tarjeta o Pro 30d con tarjeta
+5 Prompt caching                Cero IA en path feliz
+6 Tiers                         Refresh ilimitado; Regenerate 2/mes Pro, ilimitado Enterprise
+7 Enterprise en landing         Drive, Dropbox, OneDrive, Sheets, Gmail forwarding, WhatsApp
+8 Trial                         Custom caso por caso (Odoo, Aspel, SAP, CFDIs, etc.)
+9 Ingesta recurrente            Google Places, INEGI, DENUE, Banxico, Google Trends,
+10 Refresh vs Regenerate        OpenWeather
+11 Conectores Pro               Español mexicano directo, sin tono genérico de IA
+12 Conectores Enterprise        Prohibidos en todo el producto
+13 Fuentes externas
+                                Prohibidas ("al instante" sí, "en 90 segundos" no)
+14 Idioma del producto          Prohibido en todo el código backend
+15 Testimonios falsos o KPIs    8 sprints hasta beta + features de retención por mes
+
+         marketing
+16 Promesas de tiempo
+17 Hardcoding de industria
+18 Roadmap
+
+                          Vizme v5 -- Documento Maestro · Página 53 de 58
+                                                                                   Confidencial · Diego / Vizme
+
+29 · Glosario oficial
+
+PARTE V · EJECUCIÓN
+
+Palabras que tienen significado específico en este proyecto. Usarlas correctamente elimina confusión.
+
+Término           Definición
+
+Business Schema   JSON persistente con el modelo conceptual del negocio del cliente. Generado una vez por
+                  Opus 4.7.
+
+Dashboard         Descripción estructural del dashboard (qué bloques, qué KPIs, qué layout). Generado por
+Blueprint         Opus, renderizado por código.
+
+Extraction Rules  Reglas dentro del Schema que dicen cómo extraer datos de archivos futuros sin IA.
+
+Time Series Data Histórico acumulado de todas las métricas a lo largo del tiempo.
+
+Refresh           Actualizar datos sin cambiar estructura. Ilimitado. Cero IA.
+
+Regenerate        Cambiar estructura del dashboard. Usa Opus. Limitado por tier.
+
+Schema            Actualización del Schema cuando cambia la estructura de los datos del negocio.
+Evolution
+
+Ingesta           Proceso de recibir datos nuevos y añadirlos al histórico.
+
+Wow moment        Momento específico en onboarding donde el cliente siente el valor del producto.
+
+Lock-in           El valor que pierde el cliente si deja Vizme (schema + histórico + blueprint).
+
+Wizard of Oz      Casos donde el equipo humano interviene manualmente para resolver un problema que la
+                  IA no pudo.
+
+Digest            Representación estructurada y completa de un archivo que se manda a Opus para
+                  análisis.
+
+Prompt caching    Técnica de Claude API para reducir hasta 90% costos de input en llamadas recurrentes
+                  con contexto repetido.
+
+                  Vizme v5 -- Documento Maestro · Página 54 de 58
+                                                                                                                                                  Confidencial · Diego / Vizme
+
+30 · Prompt del Sprint 1 (listo para ejecutar)
+
+PARTE V · EJECUCIÓN
+
+    Este es el prompt exacto que debes pegar en Claude Code dentro de VS Code para
+    iniciar el Sprint 1. Está diseñado siguiendo los lineamientos de la sección 27.
+
+     INSTRUCCIONES DE USO
+     Antes de pegar este prompt: asegúrate de tener este documento maestro abierto o disponible en el
+     workspace. Después de pegar: deja que Claude Code complete TODO el checklist antes de dar
+     feedback. No interrumpas a mitad de sprint.
+
+                                             Vizme v5 -- Documento Maestro · Página 55 de 58
+                                                                                                                                             Confidencial · Diego / Vizme
+
+Eres parte del equipo de desarrollo de Vizme v5.
+Antes de empezar, lee completo el documento maestro de Vizme v5
+(está disponible en el workspace como PDF o referencia lo que
+se te haya pegado al inicio de esta sesión).
+
+OBJETIVO DEL SPRINT 1
+Preparar la base de datos v5 completa en Supabase. Al final del
+sprint, deben existir todas las tablas nuevas, con sus tipos
+TypeScript correspondientes, migraciones versionadas, y RLS
+policies correctas.
+
+PRE-REQUISITOS
+- Supabase project ref: zzqvwyvgfpjecaorahrn
+- Repo: ChenteCheguis/vizme-Final-MVP-landing
+- Branch: crear feature/sprint-1-db-foundation
+- Las tablas existentes (profiles, projects, files, dashboards,
+
+   analysis_history, weekly_entries, competitors, notifications)
+   se CONSERVAN sin cambios excepto donde se indique.
+
+CHECKLIST ORDENADO (ejecutar estrictamente en este orden)
+
+1. Crear branch feature/sprint-1-db-foundation desde main.
+
+2. Crear carpeta supabase/migrations/v5/ si no existe.
+
+3. Crear migración 01_alter_files.sql:
+     - ALTER TABLE files ADD COLUMN IF NOT EXISTS structural_map jsonb;
+     - ALTER TABLE files ADD COLUMN IF NOT EXISTS extracted_data jsonb;
+     - COMMIT; probar localmente.
+
+4. Crear migración 02_business_schemas.sql (ver sección 12 del
+     documento maestro para el SQL exacto). Incluir:
+     - Tabla completa
+     - UNIQUE(project_id, version)
+     - Índice en project_id
+     - RLS: cliente solo ve schemas de sus proyectos
+     - Policy INSERT/UPDATE/DELETE limitada al owner del proyecto
+
+5. Crear migración 03_dashboard_blueprints.sql:
+     - Tabla completa según sección 12
+     - FK a business_schemas con ON DELETE CASCADE
+     - RLS equivalente
+
+6. Crear migración 04_time_series_data.sql:
+     - Tabla completa
+     - Índice compuesto (project_id, metric_id, period_start DESC)
+     - Índice en source_file_id
+     - RLS por project ownership
+
+7. Crear migración 05_insights.sql:
+     - Tabla completa
+
+                                         Vizme v5 -- Documento Maestro · Página 56 de 58
+                                                                       Confidencial · Diego / Vizme
+
+     - Índice en (project_id, generated_at DESC)
+     - Índice en (project_id, read_at) para "unread count"
+     - RLS
+
+8. Crear migración 06_external_data_cache.sql:
+     - Tabla completa
+     - UNIQUE(project_id, source, query_key)
+     - Índice en expires_at para cleanup job
+     - RLS
+
+9. Crear migración 07_schema_evolution_log.sql:
+     - Tabla completa
+     - RLS
+
+10. Crear migración 08_data_connectors.sql:
+       - Tabla completa
+       - Campo credentials: usar Supabase Vault o equivalente
+       - RLS estricta: cliente solo ve sus propios conectores
+
+11. Ejecutar TODAS las migraciones en orden contra la base remota.
+       Verificar que se aplicaron correctamente con supabase db diff.
+
+12. En src/lib/, crear archivo v5types.ts con los tipos TypeScript
+       de cada tabla nueva. Usar discriminated unions donde aplique
+       (por ejemplo, para el tipo de block en Blueprint).
+
+13. Actualizar src/lib/supabase.ts para que el cliente Supabase
+       tenga types completos (Database type).
+
+14. Crear src/lib/repos/ con un archivo por tabla:
+       - businessSchemasRepo.ts
+       - dashboardBlueprintsRepo.ts
+       - timeSeriesRepo.ts
+       - insightsRepo.ts
+       - externalCacheRepo.ts
+       - schemaEvolutionRepo.ts
+       - dataConnectorsRepo.ts
+       Cada uno exporta funciones get/list/insert/update/delete
+       con types estrictos.
+
+15. Escribir tests en src/lib/repos/__tests__/ para al menos
+       business_schemas y time_series_data. Probar:
+       - Inserción correcta
+       - RLS bloquea acceso a otros usuarios
+       - Listado respeta filtros
+
+16. Hacer commit por cada paso completado (commits atómicos).
+
+17. Al final: hacer push y crear PR al main. En la descripción
+       del PR, listar cada tabla creada con breve descripción.
+
+RESTRICCIONES (NO hacer)
+
+Vizme v5 -- Documento Maestro · Página 57 de 58
+                                                                     Confidencial · Diego / Vizme
+
+- NO modificar tablas existentes más allá de lo indicado en paso 3
+- NO incluir datos de seed específicos de ningún negocio
+
+   (nada de "Barber Magic", "cortes", etc.)
+- NO hardcodear ningún valor de negocio en tipos o enums
+- NO usar CASCADE sin pensar -- solo donde el documento lo indica
+- NO escribir código de aplicación aún (Edge Function, UI) --
+
+   este sprint es SOLO base de datos y tipos
+- NO saltarte RLS en ninguna tabla nueva
+
+CRITERIOS DE COMPLETITUD
+- Las 7 tablas nuevas existen y son consultables
+- Los tipos TypeScript compilan sin errores (tsc --noEmit)
+- Los repos se pueden importar desde cualquier archivo del proyecto
+- Los tests pasan
+- El PR está abierto con descripción completa
+
+TESTS A CORRER AL FINAL
+
+npx tsc --noEmit
+npm run test
+supabase db diff --schema public
+
+Pega los 3 outputs al final de tu respuesta como evidencia
+de que todo quedó verde.
+
+Cuando termines, responde con:
+1. Resumen de lo completado
+2. Output de los 3 tests
+3. Link al PR creado
+4. Cualquier decisión técnica tomada que no estaba en el
+
+     documento maestro (para revisar antes del Sprint 2)
+
+                vizme v5 · Documento Maestro
+
+                                    Propiedad de Diego · Confidencial · Abril 2026
+                                Este documento es la fuente de verdad del producto.
+Cualquier decisión de implementación que contradiga este documento debe validarse explícitamente.
+
+Vizme v5 -- Documento Maestro · Página 58 de 58
+
