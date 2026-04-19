@@ -19,7 +19,7 @@ export const projectsRepo = {
   async get(id: string): Promise<Project | null> {
     const { data, error } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
     if (error) throw error;
-    return (data as Project) ?? null;
+    return (data ?? null) as Project | null;
   },
 
   async create(input: { name: string; description?: string }): Promise<Project> {

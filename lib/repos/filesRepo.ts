@@ -20,7 +20,7 @@ export const filesRepo = {
   async get(id: string): Promise<FileRecord | null> {
     const { data, error } = await supabase.from('files').select('*').eq('id', id).maybeSingle();
     if (error) throw error;
-    return (data as FileRecord) ?? null;
+    return (data ?? null) as FileRecord | null;
   },
 
   async create(input: {

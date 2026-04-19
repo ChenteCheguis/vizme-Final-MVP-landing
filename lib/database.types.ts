@@ -35,6 +35,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       projects: {
         Row: {
@@ -61,6 +62,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       files: {
         Row: {
@@ -93,7 +95,22 @@ export interface Database {
           uploaded_at?: string;
           analyzed_at?: string | null;
         };
-        Update: Partial<Database['public']['Tables']['files']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          user_id?: string;
+          storage_path?: string;
+          file_name?: string;
+          file_type?: string;
+          file_size?: number;
+          status?: string;
+          structural_map?: Json | null;
+          extracted_data?: Json | null;
+          error_message?: string | null;
+          uploaded_at?: string;
+          analyzed_at?: string | null;
+        };
+        Relationships: [];
       };
       business_schemas: {
         Row: {
@@ -122,7 +139,20 @@ export interface Database {
           created_at?: string;
           is_active?: boolean;
         };
-        Update: Partial<Database['public']['Tables']['business_schemas']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          version?: number;
+          business_identity?: Json;
+          entities?: Json;
+          metrics?: Json;
+          dimensions?: Json;
+          extraction_rules?: Json;
+          external_sources?: Json;
+          created_at?: string;
+          is_active?: boolean;
+        };
+        Relationships: [];
       };
       dashboard_blueprints: {
         Row: {
@@ -147,7 +177,18 @@ export interface Database {
           regenerated_reason?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['dashboard_blueprints']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          schema_id?: string;
+          version?: number;
+          layout?: Json;
+          blocks?: Json;
+          is_active?: boolean;
+          regenerated_reason?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       time_series_data: {
         Row: {
@@ -172,7 +213,18 @@ export interface Database {
           source_file_id?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['time_series_data']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          metric_id?: string;
+          dimension_values?: Json | null;
+          value?: number | null;
+          period_start?: string;
+          period_end?: string | null;
+          source_file_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       insights: {
         Row: {
@@ -199,7 +251,19 @@ export interface Database {
           read_at?: string | null;
           priority?: number;
         };
-        Update: Partial<Database['public']['Tables']['insights']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          type?: 'weekly' | 'monthly' | 'alert' | 'anomaly';
+          title?: string;
+          content?: string;
+          data_snapshot?: Json | null;
+          model_used?: string | null;
+          generated_at?: string;
+          read_at?: string | null;
+          priority?: number;
+        };
+        Relationships: [];
       };
       external_data_cache: {
         Row: {
@@ -222,7 +286,17 @@ export interface Database {
           fetched_at?: string;
           expires_at: string;
         };
-        Update: Partial<Database['public']['Tables']['external_data_cache']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          source?: string;
+          query_key?: string;
+          query_params?: Json | null;
+          response?: Json;
+          fetched_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [];
       };
       schema_evolution_log: {
         Row: {
@@ -245,7 +319,17 @@ export interface Database {
           triggered_by?: string | null;
           changed_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['schema_evolution_log']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          old_version?: number;
+          new_version?: number;
+          change_type?: string;
+          description?: string | null;
+          triggered_by?: string | null;
+          changed_at?: string;
+        };
+        Relationships: [];
       };
       data_connectors: {
         Row: {
@@ -268,11 +352,22 @@ export interface Database {
           last_sync_at?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['data_connectors']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          type?: 'google_drive' | 'dropbox' | 'onedrive' | 'google_sheets' | 'gmail' | 'whatsapp';
+          credentials?: Json;
+          config?: Json | null;
+          is_active?: boolean;
+          last_sync_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
