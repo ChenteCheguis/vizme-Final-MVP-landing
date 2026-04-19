@@ -29,3 +29,6 @@ supabase/.branches/
 
 # Backups (never commit DB dumps)
 backup_*.sql
+
+# Combined SQL helpers (regenerate from numbered files)
+supabase/migrations/v5/_apply_all.sql
