@@ -31,4 +31,4 @@ supabase/.branches/
 backup_*.sql
 
 # Combined SQL helpers (regenerate from numbered files)
-supabase/migrations/v5/_apply_all.sql
+supabase/migrations/v5/_apply_all*.sql
