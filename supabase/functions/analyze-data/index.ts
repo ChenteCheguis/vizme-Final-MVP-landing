@@ -162,7 +162,8 @@ async function handleBuildSchema(
     return errorResponse(502, 'Schema inválido tras reintento.', { errors: validation.errors });
   }
 
-  // 7. Determinar siguiente versión
+  // 7. Determinar siguiente versión.
+  // No hay is_active en business_schemas: la versión activa = max(version).
   const { data: existing } = await admin
     .from('business_schemas')
     .select('version')
@@ -170,15 +171,6 @@ async function handleBuildSchema(
     .order('version', { ascending: false })
     .limit(1);
   const nextVersion = (existing?.[0]?.version ?? 0) + 1;
-
-  // Marcar versión activa anterior como inactiva
-  if (nextVersion > 1) {
-    await admin
-      .from('business_schemas')
-      .update({ is_active: false })
-      .eq('project_id', body.project_id)
-      .eq('is_active', true);
-  }
 
   // 8. Persistir
   const { data: inserted, error: insErr } = await admin
@@ -192,19 +184,22 @@ async function handleBuildSchema(
       dimensions: payload.dimensions,
       extraction_rules: payload.extraction_rules,
       external_sources: payload.external_sources,
-      is_active: true,
+      kpi_targets: null,
+      model_used: modelResp.model_used,
+      tokens_input: modelResp.tokens_input,
+      tokens_output: modelResp.tokens_output,
     })
     .select('id')
     .single();
   if (insErr || !inserted)
     return errorResponse(500, 'No se pudo guardar el schema.', { detail: insErr?.message });
 
-  // 9. Marcar archivo como analizado
+  // 9. Marcar archivo como procesado.
+  // files no tiene status/analyzed_at; usamos processed_at + structural_map.
   await admin
     .from('files')
     .update({
-      status: 'analyzed',
-      analyzed_at: new Date().toISOString(),
+      processed_at: new Date().toISOString(),
       structural_map: { digest_summary: digest.sheets_summary },
     })
     .eq('id', body.file_id);

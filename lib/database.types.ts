@@ -1,373 +1,605 @@
-// ============================================================
-// VIZME V5 — Supabase Database types
-// Regenerate with:
-//   supabase gen types typescript --linked > lib/database.types.ts
-// Manually maintained until migrations are applied to remote.
-// ============================================================
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
-
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.4"
+  }
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          id: string;
-          email: string;
-          full_name: string | null;
-          tier: 'freemium' | 'pro' | 'enterprise';
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id: string;
-          email: string;
-          full_name?: string | null;
-          tier?: 'freemium' | 'pro' | 'enterprise';
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          email?: string;
-          full_name?: string | null;
-          tier?: 'freemium' | 'pro' | 'enterprise';
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      projects: {
-        Row: {
-          id: string;
-          user_id: string;
-          name: string;
-          description: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          name: string;
-          description?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          name?: string;
-          description?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      files: {
-        Row: {
-          id: string;
-          project_id: string;
-          user_id: string;
-          storage_path: string;
-          file_name: string;
-          file_type: string;
-          file_size: number;
-          status: string;
-          structural_map: Json | null;
-          extracted_data: Json | null;
-          error_message: string | null;
-          uploaded_at: string;
-          analyzed_at: string | null;
-        };
-        Insert: {
-          id?: string;
-          project_id: string;
-          user_id: string;
-          storage_path: string;
-          file_name: string;
-          file_type: string;
-          file_size: number;
-          status?: string;
-          structural_map?: Json | null;
-          extracted_data?: Json | null;
-          error_message?: string | null;
-          uploaded_at?: string;
-          analyzed_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          project_id?: string;
-          user_id?: string;
-          storage_path?: string;
-          file_name?: string;
-          file_type?: string;
-          file_size?: number;
-          status?: string;
-          structural_map?: Json | null;
-          extracted_data?: Json | null;
-          error_message?: string | null;
-          uploaded_at?: string;
-          analyzed_at?: string | null;
-        };
-        Relationships: [];
-      };
       business_schemas: {
         Row: {
-          id: string;
-          project_id: string;
-          version: number;
-          business_identity: Json;
-          entities: Json;
-          metrics: Json;
-          dimensions: Json;
-          extraction_rules: Json;
-          external_sources: Json;
-          created_at: string;
-          is_active: boolean;
-        };
+          business_identity: Json
+          created_at: string | null
+          dimensions: Json
+          entities: Json
+          external_sources: Json
+          extraction_rules: Json
+          id: string
+          kpi_targets: Json | null
+          metrics: Json
+          model_used: string
+          project_id: string | null
+          tokens_input: number | null
+          tokens_output: number | null
+          updated_at: string | null
+          version: number
+        }
         Insert: {
-          id?: string;
-          project_id: string;
-          version: number;
-          business_identity: Json;
-          entities: Json;
-          metrics: Json;
-          dimensions: Json;
-          extraction_rules: Json;
-          external_sources: Json;
-          created_at?: string;
-          is_active?: boolean;
-        };
+          business_identity: Json
+          created_at?: string | null
+          dimensions: Json
+          entities: Json
+          external_sources: Json
+          extraction_rules: Json
+          id?: string
+          kpi_targets?: Json | null
+          metrics: Json
+          model_used: string
+          project_id?: string | null
+          tokens_input?: number | null
+          tokens_output?: number | null
+          updated_at?: string | null
+          version?: number
+        }
         Update: {
-          id?: string;
-          project_id?: string;
-          version?: number;
-          business_identity?: Json;
-          entities?: Json;
-          metrics?: Json;
-          dimensions?: Json;
-          extraction_rules?: Json;
-          external_sources?: Json;
-          created_at?: string;
-          is_active?: boolean;
-        };
-        Relationships: [];
-      };
+          business_identity?: Json
+          created_at?: string | null
+          dimensions?: Json
+          entities?: Json
+          external_sources?: Json
+          extraction_rules?: Json
+          id?: string
+          kpi_targets?: Json | null
+          metrics?: Json
+          model_used?: string
+          project_id?: string | null
+          tokens_input?: number | null
+          tokens_output?: number | null
+          updated_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_schemas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dashboard_blueprints: {
         Row: {
-          id: string;
-          project_id: string;
-          schema_id: string;
-          version: number;
-          layout: Json;
-          blocks: Json;
-          is_active: boolean;
-          regenerated_reason: string | null;
-          created_at: string;
-        };
+          blocks: Json
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          layout: Json
+          project_id: string | null
+          regenerated_reason: string | null
+          schema_id: string | null
+          version: number
+        }
         Insert: {
-          id?: string;
-          project_id: string;
-          schema_id: string;
-          version?: number;
-          layout: Json;
-          blocks: Json;
-          is_active?: boolean;
-          regenerated_reason?: string | null;
-          created_at?: string;
-        };
+          blocks: Json
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          layout: Json
+          project_id?: string | null
+          regenerated_reason?: string | null
+          schema_id?: string | null
+          version?: number
+        }
         Update: {
-          id?: string;
-          project_id?: string;
-          schema_id?: string;
-          version?: number;
-          layout?: Json;
-          blocks?: Json;
-          is_active?: boolean;
-          regenerated_reason?: string | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-      time_series_data: {
-        Row: {
-          id: string;
-          project_id: string;
-          metric_id: string;
-          dimension_values: Json | null;
-          value: number | null;
-          period_start: string;
-          period_end: string | null;
-          source_file_id: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          project_id: string;
-          metric_id: string;
-          dimension_values?: Json | null;
-          value?: number | null;
-          period_start: string;
-          period_end?: string | null;
-          source_file_id?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          project_id?: string;
-          metric_id?: string;
-          dimension_values?: Json | null;
-          value?: number | null;
-          period_start?: string;
-          period_end?: string | null;
-          source_file_id?: string | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-      insights: {
-        Row: {
-          id: string;
-          project_id: string;
-          type: 'weekly' | 'monthly' | 'alert' | 'anomaly';
-          title: string;
-          content: string;
-          data_snapshot: Json | null;
-          model_used: string | null;
-          generated_at: string;
-          read_at: string | null;
-          priority: number;
-        };
-        Insert: {
-          id?: string;
-          project_id: string;
-          type: 'weekly' | 'monthly' | 'alert' | 'anomaly';
-          title: string;
-          content: string;
-          data_snapshot?: Json | null;
-          model_used?: string | null;
-          generated_at?: string;
-          read_at?: string | null;
-          priority?: number;
-        };
-        Update: {
-          id?: string;
-          project_id?: string;
-          type?: 'weekly' | 'monthly' | 'alert' | 'anomaly';
-          title?: string;
-          content?: string;
-          data_snapshot?: Json | null;
-          model_used?: string | null;
-          generated_at?: string;
-          read_at?: string | null;
-          priority?: number;
-        };
-        Relationships: [];
-      };
-      external_data_cache: {
-        Row: {
-          id: string;
-          project_id: string;
-          source: string;
-          query_key: string;
-          query_params: Json | null;
-          response: Json;
-          fetched_at: string;
-          expires_at: string;
-        };
-        Insert: {
-          id?: string;
-          project_id: string;
-          source: string;
-          query_key: string;
-          query_params?: Json | null;
-          response: Json;
-          fetched_at?: string;
-          expires_at: string;
-        };
-        Update: {
-          id?: string;
-          project_id?: string;
-          source?: string;
-          query_key?: string;
-          query_params?: Json | null;
-          response?: Json;
-          fetched_at?: string;
-          expires_at?: string;
-        };
-        Relationships: [];
-      };
-      schema_evolution_log: {
-        Row: {
-          id: string;
-          project_id: string;
-          old_version: number;
-          new_version: number;
-          change_type: string;
-          description: string | null;
-          triggered_by: string | null;
-          changed_at: string;
-        };
-        Insert: {
-          id?: string;
-          project_id: string;
-          old_version: number;
-          new_version: number;
-          change_type: string;
-          description?: string | null;
-          triggered_by?: string | null;
-          changed_at?: string;
-        };
-        Update: {
-          id?: string;
-          project_id?: string;
-          old_version?: number;
-          new_version?: number;
-          change_type?: string;
-          description?: string | null;
-          triggered_by?: string | null;
-          changed_at?: string;
-        };
-        Relationships: [];
-      };
+          blocks?: Json
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          layout?: Json
+          project_id?: string | null
+          regenerated_reason?: string | null
+          schema_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dashboard_blueprints_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dashboard_blueprints_schema_id_fkey"
+            columns: ["schema_id"]
+            isOneToOne: false
+            referencedRelation: "business_schemas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_connectors: {
         Row: {
-          id: string;
-          project_id: string;
-          type: 'google_drive' | 'dropbox' | 'onedrive' | 'google_sheets' | 'gmail' | 'whatsapp';
-          credentials: Json;
-          config: Json | null;
-          is_active: boolean;
-          last_sync_at: string | null;
-          created_at: string;
-        };
+          config: Json | null
+          created_at: string | null
+          credentials: Json
+          id: string
+          is_active: boolean | null
+          last_sync_at: string | null
+          project_id: string | null
+          type: string
+        }
         Insert: {
-          id?: string;
-          project_id: string;
-          type: 'google_drive' | 'dropbox' | 'onedrive' | 'google_sheets' | 'gmail' | 'whatsapp';
-          credentials: Json;
-          config?: Json | null;
-          is_active?: boolean;
-          last_sync_at?: string | null;
-          created_at?: string;
-        };
+          config?: Json | null
+          created_at?: string | null
+          credentials: Json
+          id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          project_id?: string | null
+          type: string
+        }
         Update: {
-          id?: string;
-          project_id?: string;
-          type?: 'google_drive' | 'dropbox' | 'onedrive' | 'google_sheets' | 'gmail' | 'whatsapp';
-          credentials?: Json;
-          config?: Json | null;
-          is_active?: boolean;
-          last_sync_at?: string | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-    };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
-    Enums: Record<string, never>;
-    CompositeTypes: Record<string, never>;
-  };
+          config?: Json | null
+          created_at?: string | null
+          credentials?: Json
+          id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          project_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_connectors_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      external_data_cache: {
+        Row: {
+          expires_at: string
+          fetched_at: string | null
+          id: string
+          project_id: string | null
+          query_key: string
+          query_params: Json | null
+          response: Json
+          source: string
+        }
+        Insert: {
+          expires_at: string
+          fetched_at?: string | null
+          id?: string
+          project_id?: string | null
+          query_key: string
+          query_params?: Json | null
+          response: Json
+          source: string
+        }
+        Update: {
+          expires_at?: string
+          fetched_at?: string | null
+          id?: string
+          project_id?: string | null
+          query_key?: string
+          query_params?: Json | null
+          response?: Json
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_data_cache_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      files: {
+        Row: {
+          extracted_data: Json | null
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          mime_type: string | null
+          processed_at: string | null
+          project_id: string | null
+          storage_path: string
+          structural_map: Json | null
+          uploaded_at: string | null
+        }
+        Insert: {
+          extracted_data?: Json | null
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string | null
+          processed_at?: string | null
+          project_id?: string | null
+          storage_path: string
+          structural_map?: Json | null
+          uploaded_at?: string | null
+        }
+        Update: {
+          extracted_data?: Json | null
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string | null
+          processed_at?: string | null
+          project_id?: string | null
+          storage_path?: string
+          structural_map?: Json | null
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "files_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insights: {
+        Row: {
+          content: string
+          data_snapshot: Json | null
+          generated_at: string | null
+          id: string
+          model_used: string | null
+          priority: number | null
+          project_id: string | null
+          read_at: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          content: string
+          data_snapshot?: Json | null
+          generated_at?: string | null
+          id?: string
+          model_used?: string | null
+          priority?: number | null
+          project_id?: string | null
+          read_at?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          content?: string
+          data_snapshot?: Json | null
+          generated_at?: string | null
+          id?: string
+          model_used?: string | null
+          priority?: number | null
+          project_id?: string | null
+          read_at?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insights_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+          subscription_id: string | null
+          tier: string
+          trial_ends_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id: string
+          subscription_id?: string | null
+          tier?: string
+          trial_ends_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          subscription_id?: string | null
+          tier?: string
+          trial_ends_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          question: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          question?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          question?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      schema_evolution_log: {
+        Row: {
+          change_type: string
+          changed_at: string | null
+          description: string | null
+          id: string
+          new_version: number
+          old_version: number
+          project_id: string | null
+          triggered_by: string | null
+        }
+        Insert: {
+          change_type: string
+          changed_at?: string | null
+          description?: string | null
+          id?: string
+          new_version: number
+          old_version: number
+          project_id?: string | null
+          triggered_by?: string | null
+        }
+        Update: {
+          change_type?: string
+          changed_at?: string | null
+          description?: string | null
+          id?: string
+          new_version?: number
+          old_version?: number
+          project_id?: string | null
+          triggered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schema_evolution_log_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schema_evolution_log_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      time_series_data: {
+        Row: {
+          created_at: string | null
+          dimension_values: Json | null
+          id: string
+          metric_id: string
+          period_end: string | null
+          period_start: string
+          project_id: string | null
+          source_file_id: string | null
+          value: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          dimension_values?: Json | null
+          id?: string
+          metric_id: string
+          period_end?: string | null
+          period_start: string
+          project_id?: string | null
+          source_file_id?: string | null
+          value?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          dimension_values?: Json | null
+          id?: string
+          metric_id?: string
+          period_end?: string | null
+          period_start?: string
+          project_id?: string | null
+          source_file_id?: string | null
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_series_data_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_series_data_source_file_id_fkey"
+            columns: ["source_file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
