@@ -87,13 +87,21 @@ export async function callClaude(args: ClaudeCallArgs): Promise<ClaudeCallResult
     ? [{ type: 'text', text: args.system, cache_control: { type: 'ephemeral' } }]
     : [{ type: 'text', text: args.system }];
 
-  const body = {
+  // Opus 4.7 deprecó temperature, top_p, top_k → la API responde 400 si se mandan.
+  // Sonnet 4.6 y Haiku 4.5 todavía los aceptan. Para opus-4-7-* omitimos los keys
+  // por completo (no basta con poner null). El argumento args.temperature sigue
+  // aceptándose en la firma pero se ignora silenciosamente para opus-4-7.
+  const isOpus47 = model.startsWith('claude-opus-4-7');
+
+  const body: Record<string, unknown> = {
     model,
     max_tokens: args.max_tokens ?? 8192,
-    temperature: args.temperature ?? 0,
     system: systemBlocks,
     messages: args.messages.map((m) => ({ role: m.role, content: m.content })),
   };
+  if (!isOpus47) {
+    body.temperature = args.temperature ?? 0;
+  }
 
   let lastError: ClaudeError | null = null;
 
