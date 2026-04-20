@@ -22,13 +22,15 @@ import { performance } from 'node:perf_hooks';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 type Args = {
-  file: string;
+  file?: string;
   hint?: string;
   question?: string;
+  cleanup?: boolean;
+  deleteUser?: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
-  const out: Partial<Args> = {};
+  const out: Args = {};
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const next = argv[i + 1];
@@ -41,14 +43,20 @@ function parseArgs(argv: string[]): Args {
     } else if (flag === '--question') {
       out.question = next;
       i++;
+    } else if (flag === '--cleanup') {
+      out.cleanup = true;
+    } else if (flag === '--delete-user') {
+      out.deleteUser = true;
     }
   }
-  if (!out.file) {
-    console.error('❌ Falta --file <path>. Ejemplo:');
+  if (!out.cleanup && !out.file) {
+    console.error('❌ Falta --file <path> (o usa --cleanup). Ejemplos:');
     console.error('   npm run test:analyze -- --file ./data/ventas.xlsx');
+    console.error('   npm run test:analyze -- --cleanup');
+    console.error('   npm run test:analyze -- --cleanup --delete-user');
     process.exit(1);
   }
-  return out as Args;
+  return out;
 }
 
 async function loadEnv(): Promise<Record<string, string>> {
@@ -264,6 +272,115 @@ async function cleanupIfConfirmed(
   console.log('🧹 Cleanup completado.');
 }
 
+async function listAllStorageObjects(
+  admin: SupabaseClient,
+  bucket: string,
+  prefix: string
+): Promise<string[]> {
+  const acc: string[] = [];
+  // Folders se listan por nivel; recorremos recursivamente.
+  const walk = async (dir: string): Promise<void> => {
+    const { data, error } = await admin.storage.from(bucket).list(dir, { limit: 1000 });
+    if (error) {
+      console.warn(`  ⚠ list(${dir}) falló: ${error.message}`);
+      return;
+    }
+    for (const entry of data ?? []) {
+      const path = dir ? `${dir}/${entry.name}` : entry.name;
+      // Folders no tienen id; los archivos sí.
+      if (entry.id) acc.push(path);
+      else await walk(path);
+    }
+  };
+  await walk(prefix);
+  return acc;
+}
+
+async function runCleanup(
+  admin: SupabaseClient,
+  email: string,
+  deleteUser: boolean
+): Promise<void> {
+  console.log(`\n🧹 Cleanup completo para usuario ${email}`);
+
+  const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  if (listErr) {
+    dumpError('admin.listUsers falló', listErr);
+    process.exit(1);
+  }
+  const user = list?.users?.find((u) => u.email === email);
+  if (!user) {
+    console.log(`ℹ️  No existe usuario ${email}. Nada que limpiar.`);
+    return;
+  }
+  console.log(`👤 Usuario: ${user.id}`);
+
+  const { data: projects, error: projErr } = await admin
+    .from('projects')
+    .select('id, name')
+    .eq('user_id', user.id);
+  if (projErr) {
+    dumpError('projects.select falló', projErr);
+    process.exit(1);
+  }
+  const projectIds = (projects ?? []).map((p) => p.id);
+  console.log(`📁 Proyectos a borrar: ${projectIds.length}`);
+
+  if (projectIds.length > 0) {
+    // Orden de FKs: hijos antes que padres. projects es el padre raíz.
+    const cascadeTables = [
+      'time_series_data',
+      'insights',
+      'dashboard_blueprints',
+      'business_schemas',
+      'external_data_cache',
+      'schema_evolution_log',
+      'data_connectors',
+      'files',
+    ];
+    for (const table of cascadeTables) {
+      const { error, count } = await admin
+        .from(table)
+        .delete({ count: 'exact' })
+        .in('project_id', projectIds);
+      if (error) console.warn(`  ⚠ delete ${table}: ${error.message}`);
+      else console.log(`  🗑  ${table}: ${count ?? 0} filas`);
+    }
+  }
+
+  // Storage: lista y borra todo bajo user-files/<user_id>/
+  const objects = await listAllStorageObjects(admin, 'user-files', user.id);
+  if (objects.length > 0) {
+    const { error: rmErr } = await admin.storage.from('user-files').remove(objects);
+    if (rmErr) console.warn(`  ⚠ storage remove: ${rmErr.message}`);
+    else console.log(`  🗑  storage: ${objects.length} archivos`);
+  } else {
+    console.log('  ℹ️  storage: nada que borrar');
+  }
+
+  if (projectIds.length > 0) {
+    const { error, count } = await admin
+      .from('projects')
+      .delete({ count: 'exact' })
+      .eq('user_id', user.id);
+    if (error) console.warn(`  ⚠ delete projects: ${error.message}`);
+    else console.log(`  🗑  projects: ${count ?? 0} filas`);
+  }
+
+  if (deleteUser) {
+    const { error } = await admin.auth.admin.deleteUser(user.id);
+    if (error) {
+      dumpError('admin.deleteUser falló', error);
+    } else {
+      console.log(`  🗑  usuario ${email} eliminado`);
+    }
+  } else {
+    console.log(`  ℹ️  usuario conservado (usa --delete-user para borrarlo también)`);
+  }
+
+  console.log('\n✅ Cleanup completado.');
+}
+
 function cost(tokensIn: number, tokensOut: number, cachedRead: number, cachedWrite: number): string {
   // Opus 4.7 pricing aprox (USD por 1M tokens): in 15, out 75, cache_read 1.5, cache_write 18.75.
   const usd =
@@ -284,7 +401,16 @@ async function main() {
   const email = requireEnv(env, 'VIZME_TEST_USER_EMAIL');
   const password = requireEnv(env, 'VIZME_TEST_USER_PASSWORD');
 
-  const filePath = resolve(process.cwd(), args.file);
+  const admin0 = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  if (args.cleanup) {
+    await runCleanup(admin0, email, args.deleteUser ?? false);
+    return;
+  }
+
+  const filePath = resolve(process.cwd(), args.file!);
   let fileBytes: Buffer;
   try {
     fileBytes = await readFile(filePath);
@@ -300,7 +426,7 @@ async function main() {
   if (args.question) console.log(`❓ Question: ${args.question}`);
   console.log('');
 
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = admin0;
 
   const userId = await ensureTestUser(admin, email, password);
   console.log(`👤 Test user: ${email} (${userId})`);

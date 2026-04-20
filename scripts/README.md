@@ -23,15 +23,26 @@ VIZME_TEST_USER_PASSWORD=<password fuerte>
 ### Uso
 
 ```bash
+# Análisis end-to-end
 npm run test:analyze -- --file ./data/ventas.csv
 npm run test:analyze -- --file ./data/barber.xlsx --hint "Barbería en CDMX" --question "¿Cuál es mi servicio más rentable?"
+
+# Cleanup de todo lo del test user (deja el usuario)
+npm run test:analyze -- --cleanup
+
+# Cleanup + borrar el test user completamente
+npm run test:analyze -- --cleanup --delete-user
 ```
 
 Flags:
 
-- `--file <path>` (obligatorio): ruta al archivo local.
+- `--file <path>` (obligatorio salvo --cleanup): ruta al archivo local.
 - `--hint <string>` (opcional): pista de negocio al modelo.
 - `--question <string>` (opcional): pregunta que el cliente quiere responder.
+- `--cleanup` (opcional): borra TODO lo del test user (projects, files, schemas,
+  blueprints, time_series_data, insights, external_data_cache,
+  schema_evolution_log, data_connectors) y los archivos en storage. No corre análisis.
+- `--delete-user` (sólo con --cleanup): además borra el usuario test+sprint2@vizme.mx.
 
 ### Salida
 
