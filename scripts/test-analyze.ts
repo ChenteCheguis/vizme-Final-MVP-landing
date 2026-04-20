@@ -79,22 +79,46 @@ function requireEnv(env: Record<string, string>, key: string): string {
   return v;
 }
 
+function dumpError(label: string, err: unknown): void {
+  const e = err as Record<string, unknown> | null | undefined;
+  console.error(`\n${label}:`);
+  console.error(`  message: ${e?.message ?? '(sin message)'}`);
+  console.error(`  status:  ${e?.status ?? '(sin status)'}`);
+  console.error(`  code:    ${e?.code ?? '(sin code)'}`);
+  console.error(`  name:    ${e?.name ?? '(sin name)'}`);
+  try {
+    const props = e ? Object.getOwnPropertyNames(e) : [];
+    console.error(`  full:    ${JSON.stringify(e, props, 2)}`);
+  } catch {
+    console.error(`  full:    (no stringificable) ${String(err)}`);
+  }
+}
+
 async function ensureTestUser(
   admin: SupabaseClient,
   email: string,
   password: string
 ): Promise<string> {
   const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  if (listErr) throw new Error(`No pude listar usuarios: ${listErr.message}`);
-  const existing = list.users.find((u) => u.email === email);
+  if (listErr) {
+    dumpError('admin.listUsers falló', listErr);
+    throw new Error(`No pude listar usuarios: ${listErr.message}`);
+  }
+  const existing = list?.users?.find((u) => u.email === email);
   if (existing) return existing.id;
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
+    user_metadata: { full_name: 'Test User Vizme' },
   });
-  if (createErr || !created.user) throw new Error(`No pude crear usuario de prueba: ${createErr?.message}`);
+  if (createErr || !created?.user) {
+    dumpError('admin.createUser falló', createErr);
+    throw new Error(
+      `No pude crear usuario de prueba: ${createErr?.message ?? 'sin error pero tampoco user'}`
+    );
+  }
   return created.user.id;
 }
 
@@ -156,22 +180,27 @@ function guessContentType(fileName: string): string {
 
 async function insertFileRecord(
   admin: SupabaseClient,
-  args: { projectId: string; userId: string; storagePath: string; fileName: string; fileSize: number }
+  args: { projectId: string; storagePath: string; fileName: string; fileSize: number }
 ): Promise<string> {
-  const ext = args.fileName.toLowerCase().split('.').pop() ?? '';
+  // Columnas reales de migration 02_files.sql:
+  //   id, project_id, file_name, file_size_bytes, mime_type, storage_path,
+  //   structural_map, extracted_data, uploaded_at, processed_at
+  // (NO existe user_id ni file_type — la pertenencia se infiere vía projects.user_id)
   const { data, error } = await admin
     .from('files')
     .insert({
       project_id: args.projectId,
-      user_id: args.userId,
       storage_path: args.storagePath,
       file_name: args.fileName,
-      file_type: ext,
-      file_size: args.fileSize,
+      mime_type: guessContentType(args.fileName),
+      file_size_bytes: args.fileSize,
     })
     .select('id')
     .single();
-  if (error || !data) throw new Error(`No pude insertar files: ${error?.message}`);
+  if (error || !data) {
+    dumpError('files.insert falló', error);
+    throw new Error(`No pude insertar files: ${error?.message}`);
+  }
   console.log(`✅ files row creado: ${data.id}`);
   return data.id;
 }
@@ -284,7 +313,6 @@ async function main() {
   const uploaded = await uploadFile(admin, userId, filePath, fileBytes);
   const fileId = await insertFileRecord(admin, {
     projectId,
-    userId,
     storagePath: uploaded.storagePath,
     fileName: uploaded.fileName,
     fileSize: fileBytes.length,
