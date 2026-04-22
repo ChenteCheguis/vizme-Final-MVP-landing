@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
-import { buildFileDigest } from '../fileDigest';
+import { buildFileDigest, DigestTooLargeError } from '../fileDigest';
 
 function makeWorkbook(sheets: Record<string, Array<Array<string | number | null>>>): ArrayBuffer {
   const wb = XLSX.utils.book_new();
@@ -68,24 +68,31 @@ describe('buildFileDigest', () => {
     expect(notable?.content[1]).toBe(999999);
   });
 
-  it('incluye sample_sheets con TODAS las filas (no recorta a 30)', () => {
-    const rows: Array<Array<string | number | null>> = [['col']];
-    for (let i = 0; i < 120; i++) rows.push([`r${i}`]);
+  it('cap de 100 filas por sample_sheet pero preserva filas notables enterradas', () => {
+    const rows: Array<Array<string | number | null>> = [['col', 'monto']];
+    for (let i = 0; i < 120; i++) rows.push([`r${i}`, i]);
+    // Fila notable enterrada muy al fondo (índice 125, después del cap de 100).
+    rows.push(['Total General', 999999]);
     const buf = makeWorkbook({ Larga: rows });
 
     const digest = buildFileDigest({ buffer: buf, file_name: 'larga.xlsx' });
-    expect(digest.sample_sheets[0].rows.length).toBeGreaterThanOrEqual(120);
+    // Se capea pero la fila "Total General" sobrevive porque es notable.
+    expect(digest.sample_sheets[0].rows.length).toBeLessThanOrEqual(101);
+    const hasTotal = digest.sample_sheets[0].rows.some(
+      (r) => typeof r[0] === 'string' && r[0].toLowerCase().includes('total general')
+    );
+    expect(hasTotal).toBe(true);
   });
 
-  it('selecciona sample_sheets representativas de un workbook con muchas hojas', () => {
+  it('cap de sample_sheets a 3 aun con workbook muy grande', () => {
     const sheets: Record<string, Array<Array<string | number | null>>> = {};
     for (let i = 0; i < 12; i++) sheets[`Hoja${i + 1}`] = [['c'], ['v']];
     const buf = makeWorkbook(sheets);
 
     const digest = buildFileDigest({ buffer: buf, file_name: 'multi.xlsx' });
     expect(digest.total_sheets).toBe(12);
-    expect(digest.sample_sheets.length).toBeGreaterThanOrEqual(3);
-    expect(digest.sample_sheets.length).toBeLessThanOrEqual(5);
+    expect(digest.sample_sheets.length).toBe(3);
+    // Primera, media, última.
     expect(digest.sample_sheets[0].name).toBe('Hoja1');
     expect(digest.sample_sheets[digest.sample_sheets.length - 1].name).toBe('Hoja12');
   });
@@ -96,5 +103,31 @@ describe('buildFileDigest', () => {
     });
     const digest = buildFileDigest({ buffer: buf, file_name: 'x.xlsx' });
     expect(digest.sheets_summary[0].rows_total).toBe(3);
+  });
+
+  it('respeta el tope duro de 100k tokens incluso en workbooks masivos', () => {
+    // 500 hojas con 200 filas cada una — sin reducción superaría 100k tokens.
+    const sheets: Record<string, Array<Array<string | number | null>>> = {};
+    for (let s = 0; s < 500; s++) {
+      const rows: Array<Array<string | number | null>> = [['producto', 'monto', 'fecha']];
+      for (let r = 0; r < 200; r++) {
+        rows.push([`producto_${s}_${r}`, (r + 1) * 13, `2026-01-${(r % 28) + 1}`]);
+      }
+      sheets[`H${s + 1}`] = rows;
+    }
+    const buf = makeWorkbook(sheets);
+
+    const digest = buildFileDigest({ buffer: buf, file_name: 'massive.xlsx' });
+    const approxTokens = Math.ceil(JSON.stringify(digest).length / 4);
+    expect(approxTokens).toBeLessThanOrEqual(100_000);
+    // Nivel 1 siempre capea sample_sheets a 3 independientemente del budget.
+    expect(digest.sample_sheets.length).toBe(3);
+  });
+
+  it('expone DigestTooLargeError como tipo catchable', () => {
+    expect(DigestTooLargeError).toBeDefined();
+    const err = new DigestTooLargeError();
+    expect(err.name).toBe('DigestTooLargeError');
+    expect(err.message).toContain('Enterprise');
   });
 });
