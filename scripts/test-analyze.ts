@@ -20,6 +20,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { performance } from 'node:perf_hooks';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { buildFileDigest, type FileDigest } from '../lib/fileDigest';
 
 type Args = {
   file?: string;
@@ -218,6 +219,7 @@ async function invokeEdgeFunction(args: {
   jwt: string;
   projectId: string;
   fileId: string;
+  digest: FileDigest;
   hint?: string;
   question?: string;
 }): Promise<{ status: number; body: unknown; elapsedMs: number }> {
@@ -233,6 +235,7 @@ async function invokeEdgeFunction(args: {
       mode: 'build_schema',
       project_id: args.projectId,
       file_id: args.fileId,
+      digest: args.digest,
       business_hint: args.hint,
       question: args.question,
     }),
@@ -444,12 +447,25 @@ async function main() {
     fileSize: fileBytes.length,
   });
 
+  console.log('\n📦 Construyendo digest en cliente (parseo local, no Edge Function)...');
+  const t0Digest = performance.now();
+  const digest = buildFileDigest({ buffer: fileBytes, file_name: uploaded.fileName });
+  const digestJson = JSON.stringify(digest);
+  const digestKb = (digestJson.length / 1024).toFixed(1);
+  const approxTokens = Math.ceil(digestJson.length / 4);
+  const digestMs = Math.round(performance.now() - t0Digest);
+  console.log(
+    `   hojas: ${digest.total_sheets} | sample_sheets: ${digest.sample_sheets.length} | notable_rows: ${digest.notable_rows.length}`
+  );
+  console.log(`   tamaño: ${digestKb} KB | ~${approxTokens} tokens | parseo: ${digestMs}ms`);
+
   console.log('\n⏳ Invocando Edge Function analyze-data...');
   const resp = await invokeEdgeFunction({
     supabaseUrl: url,
     jwt,
     projectId,
     fileId,
+    digest,
     hint: args.hint,
     question: args.question,
   });

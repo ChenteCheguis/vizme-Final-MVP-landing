@@ -5,20 +5,33 @@
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2.100.1';
-import { buildFileDigest } from '../_shared/fileDigest.ts';
 import { buildSchemaPrompt, SYSTEM_PROMPT_VERSION } from '../_shared/prompts/buildSchemaPrompt.ts';
 import { callClaude, ClaudeError } from '../_shared/claudeClient.ts';
 import { extractJsonFromText, validateBusinessSchemaPayload } from '../_shared/schemaValidator.ts';
-import type { BusinessSchemaPayload } from '../_shared/types.ts';
+import type { BusinessSchemaPayload, FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
 
 interface BuildSchemaRequest {
   mode: 'build_schema';
   project_id: string;
-  file_id: string;
+  file_id?: string;       // referencia opcional; el parseo vive en el cliente
+  digest: FileDigest;     // digest ya construido por el cliente (obligatorio)
   business_hint?: string;
   question?: string;
+}
+
+function isValidDigest(d: unknown): d is FileDigest {
+  if (!d || typeof d !== 'object') return false;
+  const x = d as Partial<FileDigest>;
+  return (
+    typeof x.file_name === 'string' &&
+    typeof x.file_type === 'string' &&
+    typeof x.total_sheets === 'number' &&
+    Array.isArray(x.sheets_summary) &&
+    Array.isArray(x.sample_sheets) &&
+    Array.isArray(x.notable_rows)
+  );
 }
 
 interface AuthContext {
@@ -57,7 +70,7 @@ async function handleBuildSchema(
 ): Promise<Response> {
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // 1. Validar pertenencia
+  // 1. Validar pertenencia del proyecto
   const { data: project, error: projErr } = await admin
     .from('projects')
     .select('id, user_id')
@@ -67,29 +80,38 @@ async function handleBuildSchema(
   if (!project || project.user_id !== auth.user_id)
     return errorResponse(403, 'El proyecto no existe o no te pertenece.');
 
-  const { data: file, error: fileErr } = await admin
-    .from('files')
-    .select('id, project_id, storage_path, file_name')
-    .eq('id', body.file_id)
-    .maybeSingle();
-  if (fileErr) return errorResponse(500, 'Error consultando archivo.', { detail: fileErr.message });
-  if (!file || file.project_id !== body.project_id)
-    return errorResponse(404, 'Archivo no encontrado en este proyecto.');
-
-  // 2. Descargar archivo de Storage
-  const { data: blob, error: dlErr } = await admin.storage.from('user-files').download(file.storage_path);
-  if (dlErr || !blob) return errorResponse(500, 'No se pudo descargar el archivo.', { detail: dlErr?.message });
-  const buffer = await blob.arrayBuffer();
-
-  // 3. Digest
-  let digest;
-  try {
-    digest = buildFileDigest({ buffer, file_name: file.file_name });
-  } catch (err) {
-    return errorResponse(422, 'No se pudo leer el archivo. ¿Está corrupto o no es Excel/CSV?', {
-      detail: (err as Error).message,
-    });
+  // 2. file_id es opcional (referencia). Si viene, validamos pertenencia pero
+  // NO se usa para parsear — el parseo vive en el cliente.
+  if (body.file_id) {
+    const { data: file, error: fileErr } = await admin
+      .from('files')
+      .select('id, project_id')
+      .eq('id', body.file_id)
+      .maybeSingle();
+    if (fileErr) return errorResponse(500, 'Error consultando archivo.', { detail: fileErr.message });
+    if (!file || file.project_id !== body.project_id)
+      return errorResponse(404, 'Archivo no encontrado en este proyecto.');
   }
+
+  // 3. Validar que el cliente haya enviado un digest válido.
+  // El parseo del XLSX/CSV vive en el cliente para evitar WORKER_RESOURCE_LIMIT.
+  if (!isValidDigest(body.digest)) {
+    return errorResponse(
+      400,
+      'El cliente debe enviar un digest válido del archivo. Llama a buildFileDigest antes de invocar esta función.',
+      {
+        expected_shape: {
+          file_name: 'string',
+          file_type: 'xlsx | xls | csv',
+          total_sheets: 'number',
+          sheets_summary: 'array',
+          sample_sheets: 'array',
+          notable_rows: 'array',
+        },
+      }
+    );
+  }
+  const digest = body.digest;
 
   // 4. Prompts + llamada a Opus 4.7
   const { system, user } = buildSchemaPrompt({
@@ -194,15 +216,17 @@ async function handleBuildSchema(
   if (insErr || !inserted)
     return errorResponse(500, 'No se pudo guardar el schema.', { detail: insErr?.message });
 
-  // 9. Marcar archivo como procesado.
+  // 9. Marcar archivo como procesado (si el cliente pasó file_id).
   // files no tiene status/analyzed_at; usamos processed_at + structural_map.
-  await admin
-    .from('files')
-    .update({
-      processed_at: new Date().toISOString(),
-      structural_map: { digest_summary: digest.sheets_summary },
-    })
-    .eq('id', body.file_id);
+  if (body.file_id) {
+    await admin
+      .from('files')
+      .update({
+        processed_at: new Date().toISOString(),
+        structural_map: { digest_summary: digest.sheets_summary },
+      })
+      .eq('id', body.file_id);
+  }
 
   return json(200, {
     schema_id: inserted.id,
@@ -251,7 +275,7 @@ Deno.serve(async (req) => {
   }
 
   if (!body.mode) return errorResponse(400, 'Falta el campo "mode".');
-  if (!body.project_id || !body.file_id) return errorResponse(400, 'Faltan project_id o file_id.');
+  if (!body.project_id) return errorResponse(400, 'Falta project_id.');
 
   switch (body.mode) {
     case 'build_schema':
