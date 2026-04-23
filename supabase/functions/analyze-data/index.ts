@@ -5,7 +5,7 @@
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2.100.1';
-import { buildFileDigest, DigestTooLargeError } from '../_shared/fileDigest.ts';
+import { buildFileDigest } from '../_shared/fileDigest.ts';
 import { buildSchemaPrompt, SYSTEM_PROMPT_VERSION } from '../_shared/prompts/buildSchemaPrompt.ts';
 import { callClaude, ClaudeError } from '../_shared/claudeClient.ts';
 import { extractJsonFromText, validateBusinessSchemaPayload } from '../_shared/schemaValidator.ts';
@@ -86,9 +86,6 @@ async function handleBuildSchema(
   try {
     digest = buildFileDigest({ buffer, file_name: file.file_name });
   } catch (err) {
-    if (err instanceof DigestTooLargeError) {
-      return errorResponse(413, err.message, { error_code: 'FILE_TOO_LARGE_FOR_PLAN' });
-    }
     return errorResponse(422, 'No se pudo leer el archivo. ¿Está corrupto o no es Excel/CSV?', {
       detail: (err as Error).message,
     });

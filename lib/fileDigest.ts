@@ -6,6 +6,10 @@
 //
 // Regla dura: NO cortar filas en mitad de una hoja — las filas
 // "Total", "Gran Total", "Resumen" suelen estar enterradas.
+//
+// NOTA: No se aplica enforcement de tokens — el digest se devuelve
+// íntegro. La estrategia actual prioriza análisis certero sobre
+// optimización de costo durante el onboarding (Diego Apr 2026).
 // ============================================================
 
 import * as XLSX from 'xlsx';
@@ -67,27 +71,6 @@ const NOTABLE_KEYWORDS = [
   'existencia',
 ];
 
-// Tope duro de tokens del digest (user prompt). El system prompt (~1k tokens)
-// y el overhead de mensajería llevan el request total a ~150k máx.
-const APPROX_TOKEN_BUDGET = 100_000;
-
-// Nivel 1 — reducción base que SIEMPRE se aplica.
-const LEVEL1_MAX_SAMPLE_SHEETS = 3;
-const LEVEL1_MAX_ROWS_PER_SHEET = 100;
-const LEVEL1_MAX_NOTABLE_ROWS = 200;
-
-// Nivel 2 — reducción adicional si seguimos por encima del budget.
-const LEVEL2_MAX_SHEETS_SUMMARY = 50;
-
-export class DigestTooLargeError extends Error {
-  constructor() {
-    super(
-      'Archivo demasiado complejo para análisis automático. Planes Enterprise ofrecen procesamiento de archivos grandes con onboarding asistido. Contáctanos.'
-    );
-    this.name = 'DigestTooLargeError';
-  }
-}
-
 function classifySheet(name: string): SheetKind {
   const n = name.toLowerCase();
   if (/semana|week|wk\b/.test(n)) return 'semanal';
@@ -141,89 +124,16 @@ function detectNotableRow(
 }
 
 function pickSampleIndexes(total: number): number[] {
-  if (total <= LEVEL1_MAX_SAMPLE_SHEETS)
-    return Array.from({ length: total }, (_, i) => i);
-  // Con >3 hojas, samplear primera, medio y última.
+  if (total <= 5) return Array.from({ length: total }, (_, i) => i);
   const first = 0;
-  const middle = Math.floor(total / 2);
   const last = total - 1;
-  const unique = Array.from(new Set([first, middle, last]));
+  const middle = [
+    Math.floor(total * 0.25),
+    Math.floor(total * 0.5),
+    Math.floor(total * 0.75),
+  ];
+  const unique = Array.from(new Set([first, ...middle, last]));
   return unique.sort((a, b) => a - b);
-}
-
-function estimateDigestTokens(digest: FileDigest): number {
-  // 1 token ~= 4 chars en español. Aproximación conservadora.
-  const json = JSON.stringify(digest);
-  return Math.ceil(json.length / 4);
-}
-
-function applyLevel1(digest: FileDigest): FileDigest {
-  // 1a. Cap de sample_sheets a 3.
-  const capped_sheets_subset = digest.sample_sheets.slice(0, LEVEL1_MAX_SAMPLE_SHEETS);
-
-  // 1b. Indexar notable_rows por hoja para poder preservar filas enterradas.
-  const notableIdx = new Map<string, Set<number>>();
-  for (const nr of digest.notable_rows) {
-    if (!notableIdx.has(nr.sheet_name)) notableIdx.set(nr.sheet_name, new Set());
-    notableIdx.get(nr.sheet_name)!.add(nr.row_index);
-  }
-
-  // 1c. Cap de filas por sample_sheet a 100, preservando filas notables aún si
-  // caen después del corte.
-  const capped_sheets: SampleSheet[] = capped_sheets_subset.map((s) => {
-    if (s.rows.length <= LEVEL1_MAX_ROWS_PER_SHEET) return s;
-    const notableSet = notableIdx.get(s.name) ?? new Set<number>();
-    const head = s.rows.slice(0, LEVEL1_MAX_ROWS_PER_SHEET);
-    const tail: Array<Array<string | number | null>> = [];
-    for (let i = LEVEL1_MAX_ROWS_PER_SHEET; i < s.rows.length; i++) {
-      if (notableSet.has(i)) tail.push(s.rows[i]);
-    }
-    return { ...s, rows: [...head, ...tail] };
-  });
-
-  // 1d. Cap de notable_rows global a 200.
-  const capped_notables = digest.notable_rows.slice(0, LEVEL1_MAX_NOTABLE_ROWS);
-
-  return {
-    ...digest,
-    sample_sheets: capped_sheets,
-    notable_rows: capped_notables,
-  };
-}
-
-function applyLevel2(digest: FileDigest): FileDigest {
-  // 2a. Truncar sheets_summary agregando una fila-resumen indicando cuántas
-  // hojas quedaron fuera.
-  let sheets_summary = digest.sheets_summary;
-  if (sheets_summary.length > LEVEL2_MAX_SHEETS_SUMMARY) {
-    const kept = sheets_summary.slice(0, LEVEL2_MAX_SHEETS_SUMMARY);
-    const remaining = sheets_summary.length - LEVEL2_MAX_SHEETS_SUMMARY;
-    sheets_summary = [
-      ...kept,
-      {
-        name: `... y ${remaining} hojas más del mismo patrón`,
-        kind: 'desconocido',
-        rows_total: 0,
-        cols_total: 0,
-        header_candidates: [],
-      },
-    ];
-  }
-
-  // 2b. Deduplicar notable_rows por patrón (las primeras 3 celdas en lowercase).
-  const seen = new Set<string>();
-  const deduped: NotableRow[] = [];
-  for (const nr of digest.notable_rows) {
-    const key = nr.content
-      .slice(0, 3)
-      .map((c) => (c === null ? '' : String(c).toLowerCase().trim()))
-      .join('|');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(nr);
-  }
-
-  return { ...digest, sheets_summary, notable_rows: deduped };
 }
 
 export interface BuildDigestArgs {
@@ -284,7 +194,7 @@ export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDig
     };
   });
 
-  const raw_digest: FileDigest = {
+  return {
     file_name,
     file_type: detectFileType(file_name),
     total_sheets: sheet_names.length,
@@ -293,15 +203,4 @@ export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDig
     sample_sheets,
     notable_rows,
   };
-
-  // Nivel 1 SIEMPRE. Si alcanza, devolvemos.
-  let digest = applyLevel1(raw_digest);
-  if (estimateDigestTokens(digest) <= APPROX_TOKEN_BUDGET) return digest;
-
-  // Nivel 2 si seguimos por encima.
-  digest = applyLevel2(digest);
-  if (estimateDigestTokens(digest) <= APPROX_TOKEN_BUDGET) return digest;
-
-  // Nivel 3: abortar con mensaje humano.
-  throw new DigestTooLargeError();
 }
