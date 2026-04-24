@@ -93,11 +93,30 @@ export async function callClaude(args: ClaudeCallArgs): Promise<ClaudeCallResult
   // aceptándose en la firma pero se ignora silenciosamente para opus-4-7.
   const isOpus47 = model.startsWith('claude-opus-4-7');
 
+  // Cuando cache_control=true, además del system block marcamos el ÚLTIMO user
+  // message con cache_control:ephemeral para que el digest gigante (100k+ tokens)
+  // quede cacheado. En un retry de validación, Anthropic encuentra prefix match
+  // exacto contra el primer call y cobra cache_read (1.5 USD/1M) en vez de
+  // input fresh (15 USD/1M) para el digest. Esto evita amplificación de costo
+  // cuando la primera respuesta falla validación.
+  const messages = args.messages.map((m, idx) => {
+    const isLast = idx === args.messages.length - 1;
+    if (args.cache_control && m.role === 'user' && isLast) {
+      return {
+        role: m.role,
+        content: [
+          { type: 'text', text: m.content, cache_control: { type: 'ephemeral' } },
+        ],
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+
   const body: Record<string, unknown> = {
     model,
     max_tokens: args.max_tokens ?? 8192,
     system: systemBlocks,
-    messages: args.messages.map((m) => ({ role: m.role, content: m.content })),
+    messages,
   };
   if (!isOpus47) {
     body.temperature = args.temperature ?? 0;

@@ -120,7 +120,15 @@ async function handleBuildSchema(
     question: body.question,
   });
 
+  // [DIAGNOSIS] Logs temporales para validar fix del leak de tokens.
+  const digestChars = JSON.stringify(digest).length;
+  console.log('[DIAGNOSIS] digest size:', digestChars, 'chars (~', Math.ceil(digestChars / 4), 'tokens aprox)');
+  console.log('[DIAGNOSIS] system prompt:', system.length, 'chars (~', Math.ceil(system.length / 4), 'tokens aprox)');
+  console.log('[DIAGNOSIS] user prompt:', user.length, 'chars (~', Math.ceil(user.length / 4), 'tokens aprox)');
+  console.log('[DIAGNOSIS] total chars:', system.length + user.length);
+
   let modelResp;
+  let retryHappened = false;
   try {
     modelResp = await callClaude({
       model: 'opus-4-7',
@@ -134,6 +142,12 @@ async function handleBuildSchema(
     if (err instanceof ClaudeError) return errorResponse(502, err.message, { status: err.status });
     return errorResponse(500, 'Error inesperado llamando a Claude.', { detail: (err as Error).message });
   }
+  console.log(
+    '[DIAGNOSIS] call1 tokens — input:', modelResp.tokens_input,
+    '| output:', modelResp.tokens_output,
+    '| cache_read:', modelResp.tokens_cached_read ?? 0,
+    '| cache_write:', modelResp.tokens_cached_write ?? 0
+  );
 
   // 5. Validar JSON
   let parsed: unknown;
@@ -151,6 +165,8 @@ async function handleBuildSchema(
 
   // 6. Si falla, 1 reintento pidiendo corrección
   if (!validation.ok) {
+    retryHappened = true;
+    console.log('[DIAGNOSIS] validation failed, retrying. errors:', validation.errors.slice(0, 3));
     const fixUser =
       'Tu respuesta anterior tuvo errores de validación:\n\n' +
       validation.errors.map((e) => `- ${e}`).join('\n') +
@@ -168,6 +184,12 @@ async function handleBuildSchema(
         temperature: 0,
         cache_control: true,
       });
+      console.log(
+        '[DIAGNOSIS] retry tokens — input:', retry.tokens_input,
+        '| output:', retry.tokens_output,
+        '| cache_read:', retry.tokens_cached_read ?? 0,
+        '| cache_write:', retry.tokens_cached_write ?? 0
+      );
       const reparsed = extractJsonFromText(retry.text);
       validation = validateBusinessSchemaPayload(reparsed);
       payload = validation.payload;
@@ -179,6 +201,7 @@ async function handleBuildSchema(
       return errorResponse(502, 'Falló el reintento de corrección.', { detail: (err as Error).message });
     }
   }
+  console.log('[DIAGNOSIS] retry happened:', retryHappened, '| total input:', modelResp.tokens_input, '| total output:', modelResp.tokens_output);
 
   if (!validation.ok || !payload) {
     return errorResponse(502, 'Schema inválido tras reintento.', { errors: validation.errors });
