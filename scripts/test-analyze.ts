@@ -483,6 +483,7 @@ async function main() {
   const body = resp.body as {
     schema_id: string;
     version: number;
+    route?: 'simple' | 'chunked';
     summary: Record<string, unknown>;
     usage: {
       model: string;
@@ -490,11 +491,48 @@ async function main() {
       tokens_output: number;
       tokens_cached_read?: number;
       tokens_cached_write?: number;
-      prompt_version: string;
+      total_duration_ms?: number;
+      prompt_version?: string;
     };
+    steps_executed?: Array<{
+      step_number: number;
+      stage: string;
+      tokens_input: number;
+      tokens_output: number;
+      cache_read: number;
+      cache_write: number;
+      duration_ms: number;
+      retried: number;
+    }>;
+    progress_events?: Array<{
+      step: number;
+      total_steps: number;
+      stage: string;
+      human_message: string;
+    }>;
   };
 
-  console.log('\n📊 Tokens:');
+  if (body.route) {
+    const label = body.route === 'chunked' ? 'CHUNKED (digest > 25k tokens)' : 'SIMPLE (digest ≤ 25k tokens)';
+    console.log(`\n🧭 Ruta detectada: ${label}`);
+  }
+
+  if (body.progress_events && body.progress_events.length > 0 && body.steps_executed) {
+    console.log('');
+    body.progress_events.forEach((evt, i) => {
+      console.log(`⏳ Paso ${evt.step}/${evt.total_steps}: ${evt.human_message}`);
+      const step = body.steps_executed?.[i];
+      if (step) {
+        console.log(
+          `✅ Paso ${evt.step}/${evt.total_steps} completado (${(step.duration_ms / 1000).toFixed(1)}s, ${step.tokens_input} in / ${step.tokens_output} out${step.cache_read ? ` | cache_r=${step.cache_read}` : ''}${step.retried ? ` | retries=${step.retried}` : ''})`
+        );
+      }
+    });
+  }
+
+  const totalDur = body.usage.total_duration_ms ?? 0;
+  console.log(`\n⏱  Tiempo del orchestrator: ${(totalDur / 1000).toFixed(1)}s`);
+  console.log('\n📊 Tokens totales:');
   console.log(`   input:        ${body.usage.tokens_input}`);
   console.log(`   output:       ${body.usage.tokens_output}`);
   console.log(`   cached read:  ${body.usage.tokens_cached_read ?? 0}`);
@@ -511,7 +549,7 @@ async function main() {
   console.log('\n📋 Summary:');
   console.log(JSON.stringify(body.summary, null, 2));
   console.log(`\n🆔 schema_id: ${body.schema_id} (version ${body.version})`);
-  console.log(`🏷  prompt_version: ${body.usage.prompt_version}`);
+  if (body.usage.prompt_version) console.log(`🏷  prompt_version: ${body.usage.prompt_version}`);
 
   console.log('\n📄 Schema completo (desde DB):');
   const persisted = await fetchPersistedSchema(admin, body.schema_id);
