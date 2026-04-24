@@ -2,21 +2,23 @@
 // VIZME V5 — Edge Function: analyze-data
 // Modos: build_schema (este sprint). Otros vienen en sprints
 // posteriores (refresh, regenerate_blueprint, etc.).
+//
+// build_schema ahora delega en chunkingOrchestrator para decidir
+// entre ruta 'simple' (1 call) o 'chunked' (3 calls + throttling)
+// según el tamaño del digest — Sprint 2.5.
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2.100.1';
-import { buildSchemaPrompt, SYSTEM_PROMPT_VERSION } from '../_shared/prompts/buildSchemaPrompt.ts';
-import { callClaude, ClaudeError } from '../_shared/claudeClient.ts';
-import { extractJsonFromText, validateBusinessSchemaPayload } from '../_shared/schemaValidator.ts';
-import type { BusinessSchemaPayload, FileDigest } from '../_shared/types.ts';
+import { orchestrateBuildSchema } from '../_shared/chunkingOrchestrator.ts';
+import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
 
 interface BuildSchemaRequest {
   mode: 'build_schema';
   project_id: string;
-  file_id?: string;       // referencia opcional; el parseo vive en el cliente
-  digest: FileDigest;     // digest ya construido por el cliente (obligatorio)
+  file_id?: string;
+  digest: FileDigest;
   business_hint?: string;
   question?: string;
 }
@@ -80,8 +82,7 @@ async function handleBuildSchema(
   if (!project || project.user_id !== auth.user_id)
     return errorResponse(403, 'El proyecto no existe o no te pertenece.');
 
-  // 2. file_id es opcional (referencia). Si viene, validamos pertenencia pero
-  // NO se usa para parsear — el parseo vive en el cliente.
+  // 2. file_id opcional — si viene, validar pertenencia. El parseo vive en el cliente.
   if (body.file_id) {
     const { data: file, error: fileErr } = await admin
       .from('files')
@@ -93,8 +94,7 @@ async function handleBuildSchema(
       return errorResponse(404, 'Archivo no encontrado en este proyecto.');
   }
 
-  // 3. Validar que el cliente haya enviado un digest válido.
-  // El parseo del XLSX/CSV vive en el cliente para evitar WORKER_RESOURCE_LIMIT.
+  // 3. Validar digest enviado por el cliente
   if (!isValidDigest(body.digest)) {
     return errorResponse(
       400,
@@ -111,104 +111,31 @@ async function handleBuildSchema(
       }
     );
   }
-  const digest = body.digest;
 
-  // 4. Prompts + llamada a Opus 4.7
-  const { system, user } = buildSchemaPrompt({
-    digest,
-    business_hint: body.business_hint,
-    question: body.question,
+  // 4. Delegar al orchestrator (decide ruta simple vs chunked)
+  let orch;
+  try {
+    orch = await orchestrateBuildSchema({
+      digest: body.digest,
+      businessHint: body.business_hint,
+      question: body.question,
+    });
+  } catch (err) {
+    return errorResponse(502, 'El orchestrator falló construyendo el schema.', {
+      detail: (err as Error).message,
+    });
+  }
+
+  console.log(
+    `[ORCH] route=${orch.route} steps=${orch.steps_executed.length} duration=${orch.total_duration_ms}ms`
+  );
+  orch.steps_executed.forEach((s) => {
+    console.log(
+      `[ORCH] step ${s.step_number} (${s.stage}): in=${s.tokens_input} out=${s.tokens_output} cache_r=${s.cache_read} cache_w=${s.cache_write} dur=${s.duration_ms}ms retries=${s.retried}`
+    );
   });
 
-  // [DIAGNOSIS] Logs temporales para validar fix del leak de tokens.
-  const digestChars = JSON.stringify(digest).length;
-  console.log('[DIAGNOSIS] digest size:', digestChars, 'chars (~', Math.ceil(digestChars / 4), 'tokens aprox)');
-  console.log('[DIAGNOSIS] system prompt:', system.length, 'chars (~', Math.ceil(system.length / 4), 'tokens aprox)');
-  console.log('[DIAGNOSIS] user prompt:', user.length, 'chars (~', Math.ceil(user.length / 4), 'tokens aprox)');
-  console.log('[DIAGNOSIS] total chars:', system.length + user.length);
-
-  let modelResp;
-  let retryHappened = false;
-  try {
-    modelResp = await callClaude({
-      model: 'opus-4-7',
-      system,
-      messages: [{ role: 'user', content: user }],
-      max_tokens: 16000,
-      temperature: 0,
-      cache_control: true,
-    });
-  } catch (err) {
-    if (err instanceof ClaudeError) return errorResponse(502, err.message, { status: err.status });
-    return errorResponse(500, 'Error inesperado llamando a Claude.', { detail: (err as Error).message });
-  }
-  console.log(
-    '[DIAGNOSIS] call1 tokens — input:', modelResp.tokens_input,
-    '| output:', modelResp.tokens_output,
-    '| cache_read:', modelResp.tokens_cached_read ?? 0,
-    '| cache_write:', modelResp.tokens_cached_write ?? 0
-  );
-
-  // 5. Validar JSON
-  let parsed: unknown;
-  try {
-    parsed = extractJsonFromText(modelResp.text);
-  } catch (err) {
-    return errorResponse(502, 'Opus devolvió texto sin JSON parseable.', {
-      detail: (err as Error).message,
-      raw_preview: modelResp.text.slice(0, 500),
-    });
-  }
-
-  let validation = validateBusinessSchemaPayload(parsed);
-  let payload: BusinessSchemaPayload | undefined = validation.payload;
-
-  // 6. Si falla, 1 reintento pidiendo corrección
-  if (!validation.ok) {
-    retryHappened = true;
-    console.log('[DIAGNOSIS] validation failed, retrying. errors:', validation.errors.slice(0, 3));
-    const fixUser =
-      'Tu respuesta anterior tuvo errores de validación:\n\n' +
-      validation.errors.map((e) => `- ${e}`).join('\n') +
-      '\n\nDevuelve EL MISMO objeto pero corregido. JSON estricto, sin markdown.';
-    try {
-      const retry = await callClaude({
-        model: 'opus-4-7',
-        system,
-        messages: [
-          { role: 'user', content: user },
-          { role: 'assistant', content: modelResp.text },
-          { role: 'user', content: fixUser },
-        ],
-        max_tokens: 16000,
-        temperature: 0,
-        cache_control: true,
-      });
-      console.log(
-        '[DIAGNOSIS] retry tokens — input:', retry.tokens_input,
-        '| output:', retry.tokens_output,
-        '| cache_read:', retry.tokens_cached_read ?? 0,
-        '| cache_write:', retry.tokens_cached_write ?? 0
-      );
-      const reparsed = extractJsonFromText(retry.text);
-      validation = validateBusinessSchemaPayload(reparsed);
-      payload = validation.payload;
-      modelResp.tokens_input += retry.tokens_input;
-      modelResp.tokens_output += retry.tokens_output;
-      if (retry.tokens_cached_read) modelResp.tokens_cached_read = (modelResp.tokens_cached_read ?? 0) + retry.tokens_cached_read;
-      if (retry.tokens_cached_write) modelResp.tokens_cached_write = (modelResp.tokens_cached_write ?? 0) + retry.tokens_cached_write;
-    } catch (err) {
-      return errorResponse(502, 'Falló el reintento de corrección.', { detail: (err as Error).message });
-    }
-  }
-  console.log('[DIAGNOSIS] retry happened:', retryHappened, '| total input:', modelResp.tokens_input, '| total output:', modelResp.tokens_output);
-
-  if (!validation.ok || !payload) {
-    return errorResponse(502, 'Schema inválido tras reintento.', { errors: validation.errors });
-  }
-
-  // 7. Determinar siguiente versión.
-  // No hay is_active en business_schemas: la versión activa = max(version).
+  // 5. Determinar siguiente versión
   const { data: existing } = await admin
     .from('business_schemas')
     .select('version')
@@ -217,7 +144,14 @@ async function handleBuildSchema(
     .limit(1);
   const nextVersion = (existing?.[0]?.version ?? 0) + 1;
 
-  // 8. Persistir
+  // 6. Agregados de tokens
+  const totalTokensInput = orch.steps_executed.reduce((a, s) => a + s.tokens_input, 0);
+  const totalTokensOutput = orch.steps_executed.reduce((a, s) => a + s.tokens_output, 0);
+  const totalCacheRead = orch.steps_executed.reduce((a, s) => a + s.cache_read, 0);
+  const totalCacheWrite = orch.steps_executed.reduce((a, s) => a + s.cache_write, 0);
+
+  // 7. Persistir (incluye metadata del chunking)
+  const payload = orch.schema;
   const { data: inserted, error: insErr } = await admin
     .from('business_schemas')
     .insert({
@@ -230,23 +164,25 @@ async function handleBuildSchema(
       extraction_rules: payload.extraction_rules,
       external_sources: payload.external_sources,
       kpi_targets: null,
-      model_used: modelResp.model_used,
-      tokens_input: modelResp.tokens_input,
-      tokens_output: modelResp.tokens_output,
+      model_used: 'claude-opus-4-7',
+      tokens_input: totalTokensInput,
+      tokens_output: totalTokensOutput,
+      route: orch.route,
+      steps_executed: orch.steps_executed,
+      total_duration_ms: orch.total_duration_ms,
     })
     .select('id')
     .single();
   if (insErr || !inserted)
     return errorResponse(500, 'No se pudo guardar el schema.', { detail: insErr?.message });
 
-  // 9. Marcar archivo como procesado (si el cliente pasó file_id).
-  // files no tiene status/analyzed_at; usamos processed_at + structural_map.
+  // 8. Marcar archivo como procesado
   if (body.file_id) {
     await admin
       .from('files')
       .update({
         processed_at: new Date().toISOString(),
-        structural_map: { digest_summary: digest.sheets_summary },
+        structural_map: { digest_summary: body.digest.sheets_summary },
       })
       .eq('id', body.file_id);
   }
@@ -254,8 +190,10 @@ async function handleBuildSchema(
   return json(200, {
     schema_id: inserted.id,
     version: nextVersion,
+    route: orch.route,
     summary: {
       industry: payload.business_identity.industry,
+      sub_industry: payload.business_identity.sub_industry ?? null,
       metrics_count: payload.metrics.length,
       entities_count: payload.entities.length,
       dimensions_count: payload.dimensions.length,
@@ -264,13 +202,15 @@ async function handleBuildSchema(
       needs_clarification: payload.needs_clarification ?? null,
     },
     usage: {
-      model: modelResp.model_used,
-      tokens_input: modelResp.tokens_input,
-      tokens_output: modelResp.tokens_output,
-      tokens_cached_read: modelResp.tokens_cached_read ?? 0,
-      tokens_cached_write: modelResp.tokens_cached_write ?? 0,
-      prompt_version: SYSTEM_PROMPT_VERSION,
+      model: 'claude-opus-4-7',
+      tokens_input: totalTokensInput,
+      tokens_output: totalTokensOutput,
+      tokens_cached_read: totalCacheRead,
+      tokens_cached_write: totalCacheWrite,
+      total_duration_ms: orch.total_duration_ms,
     },
+    steps_executed: orch.steps_executed,
+    progress_events: orch.progress_events,
   });
 }
 
