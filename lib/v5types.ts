@@ -73,8 +73,12 @@ export type BusinessSchema = {
   dimensions: Dimension[];
   extraction_rules: ExtractionRule[];
   external_sources: ExternalSource[];
+  kpi_targets?: Json;
+  model_used: string;
+  tokens_input?: number;
+  tokens_output?: number;
   created_at: string;
-  is_active: boolean;
+  updated_at: string;
 };
 
 // ---------- Dashboard Blueprint (Layer 3: Dashboard Vivo) ----------
@@ -195,7 +199,7 @@ export type Insight = {
   title: string;
   content: string;
   data_snapshot?: Json;
-  model_used?: 'opus-4-7' | 'opus-4-6' | 'sonnet-4-6' | 'haiku-4-5';
+  model_used?: 'opus-4-7' | 'sonnet-4-6' | 'haiku-4-5';
   generated_at: string;
   read_at?: string;
   priority: number;
@@ -241,21 +245,19 @@ export type DataConnector = {
 };
 
 // ---------- Files ----------
-
+// Columnas de migration 02_files.sql. La pertenencia se infiere
+// vía projects.user_id (no hay user_id directo en files).
 export type FileRecord = {
   id: string;
   project_id: string;
-  user_id: string;
   storage_path: string;
   file_name: string;
-  file_type: string;
-  file_size: number;
-  status: 'uploaded' | 'analyzing' | 'analyzed' | 'failed';
+  mime_type?: string;
+  file_size_bytes?: number;
   structural_map?: Json;
   extracted_data?: Json;
-  error_message?: string;
   uploaded_at: string;
-  analyzed_at?: string;
+  processed_at?: string;
 };
 
 // ---------- Projects + Profiles ----------
@@ -267,6 +269,8 @@ export type Profile = {
   email: string;
   full_name?: string;
   tier: Tier;
+  trial_ends_at?: string;
+  subscription_id?: string;
   created_at: string;
   updated_at: string;
 };
@@ -276,6 +280,7 @@ export type Project = {
   user_id: string;
   name: string;
   description?: string;
+  question?: string;
   created_at: string;
   updated_at: string;
 };

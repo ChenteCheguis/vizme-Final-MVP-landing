@@ -9,10 +9,9 @@ import type { BusinessSchema } from '../../v5types';
 
 describe('businessSchemasRepo', () => {
   it('expone los métodos esperados', () => {
-    expect(typeof businessSchemasRepo.getActive).toBe('function');
+    expect(typeof businessSchemasRepo.getLatestVersion).toBe('function');
     expect(typeof businessSchemasRepo.listVersions).toBe('function');
     expect(typeof businessSchemasRepo.createNewVersion).toBe('function');
-    expect(typeof businessSchemasRepo.setActive).toBe('function');
   });
 
   it('BusinessSchema type admite el contrato mínimo', () => {
@@ -32,10 +31,11 @@ describe('businessSchemasRepo', () => {
       dimensions: [],
       extraction_rules: [],
       external_sources: [],
+      model_used: 'claude-opus-4-7',
       created_at: new Date().toISOString(),
-      is_active: true,
+      updated_at: new Date().toISOString(),
     };
     expect(sample.version).toBe(1);
-    expect(sample.is_active).toBe(true);
+    expect(sample.model_used).toBe('claude-opus-4-7');
   });
 });

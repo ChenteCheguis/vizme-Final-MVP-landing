@@ -1,0 +1,15 @@
+project_id = "zzqvwyvgfpjecaorahrn"
+
+# ============================================================
+# Edge Functions
+# ============================================================
+# Por default Supabase Edge Functions valida el JWT en el gateway antes de
+# enrutar al runtime de la función. En proyectos nuevos los JWTs se firman
+# con ES256, que el gateway aún no soporta del todo y devuelve:
+#   401 UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM
+# La función analyze-data ya valida el JWT por su cuenta (verifyAuth →
+# supabase.auth.getUser() contra GoTrue, que sí soporta ES256), así que
+# desactivamos la validación duplicada del gateway.
+
+[functions.analyze-data]
+verify_jwt = false

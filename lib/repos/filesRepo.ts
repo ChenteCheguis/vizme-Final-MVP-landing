@@ -1,10 +1,11 @@
 // ============================================================
 // VIZME V5 — filesRepo
 // Metadata de archivos subidos. El contenido vive en Supabase Storage.
+// La pertenencia al usuario se infiere vía projects.user_id (RLS lo aplica).
 // ============================================================
 
 import { supabase } from '../supabase';
-import type { FileRecord } from '../v5types';
+import type { FileRecord, Json } from '../v5types';
 
 export const filesRepo = {
   async listByProject(projectId: string): Promise<FileRecord[]> {
@@ -25,25 +26,23 @@ export const filesRepo = {
 
   async create(input: {
     project_id: string;
-    user_id: string;
     storage_path: string;
     file_name: string;
-    file_type: string;
-    file_size: number;
+    mime_type?: string;
+    file_size_bytes?: number;
   }): Promise<FileRecord> {
     const { data, error } = await supabase.from('files').insert(input).select().single();
     if (error) throw error;
     return data as FileRecord;
   },
 
-  async updateStatus(
+  async markProcessed(
     id: string,
-    status: FileRecord['status'],
-    extra?: Partial<Pick<FileRecord, 'structural_map' | 'extracted_data' | 'error_message' | 'analyzed_at'>>
+    extra?: { structural_map?: Json; extracted_data?: Json }
   ): Promise<FileRecord> {
     const { data, error } = await supabase
       .from('files')
-      .update({ status, ...extra })
+      .update({ processed_at: new Date().toISOString(), ...extra })
       .eq('id', id)
       .select()
       .single();

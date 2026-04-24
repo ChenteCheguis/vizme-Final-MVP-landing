@@ -31,4 +31,9 @@ supabase/.branches/
 backup_*.sql
 
 # Combined SQL helpers (regenerate from numbered files)
-supabase/migrations/v5/_apply_all.sql
+supabase/migrations/v5/_apply_all*.sql
+# Hotfix helpers ad-hoc (la versión canónica vive en su migration numerada)
+supabase/migrations/v5/_fix_*.sql
+
+.claude/
+Vizme_v5_Documento_Maestro.pdf

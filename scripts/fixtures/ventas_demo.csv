@@ -1,0 +1,32 @@
+fecha,canal,producto,cantidad,precio_unitario,total
+2026-03-01,tienda,Taza de ceramica,3,120,360
+2026-03-01,online,Taza de ceramica,5,140,700
+2026-03-02,tienda,Playera algodon,2,280,560
+2026-03-03,online,Playera algodon,4,280,1120
+2026-03-03,tienda,Gorra bordada,1,350,350
+2026-03-04,online,Gorra bordada,2,350,700
+2026-03-05,tienda,Taza de ceramica,6,120,720
+2026-03-06,online,Taza de ceramica,8,140,1120
+2026-03-07,tienda,Playera algodon,3,280,840
+2026-03-08,online,Playera algodon,5,280,1400
+2026-03-09,tienda,Termo acero,1,450,450
+2026-03-10,online,Termo acero,3,470,1410
+2026-03-11,tienda,Gorra bordada,2,350,700
+2026-03-12,online,Gorra bordada,4,350,1400
+2026-03-13,tienda,Taza de ceramica,4,120,480
+2026-03-14,online,Taza de ceramica,10,140,1400
+2026-03-15,tienda,Playera algodon,6,280,1680
+2026-03-16,online,Playera algodon,8,280,2240
+2026-03-17,tienda,Termo acero,2,450,900
+2026-03-18,online,Termo acero,5,470,2350
+2026-03-19,tienda,Gorra bordada,3,350,1050
+2026-03-20,online,Gorra bordada,6,350,2100
+2026-03-21,tienda,Taza de ceramica,7,120,840
+2026-03-22,online,Taza de ceramica,12,140,1680
+2026-03-23,tienda,Playera algodon,4,280,1120
+2026-03-24,online,Playera algodon,7,280,1960
+2026-03-25,tienda,Termo acero,3,450,1350
+2026-03-26,online,Termo acero,4,470,1880
+2026-03-27,tienda,Gorra bordada,2,350,700
+2026-03-28,online,Gorra bordada,5,350,1750
+Total General,,,,,33360
