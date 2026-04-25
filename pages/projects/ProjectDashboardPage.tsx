@@ -15,6 +15,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import SummaryCard from '../../components/wizard/SummaryCard';
+import IngestModal from '../../components/ingest/IngestModal';
 import type { BusinessSchema, Project } from '../../lib/v5types';
 import type { AnalysisSummary } from '../../lib/onboardingState';
 
@@ -36,6 +37,8 @@ export default function ProjectDashboardPage() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ingestOpen, setIngestOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -84,7 +87,7 @@ export default function ProjectDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, user]);
+  }, [id, user, reloadKey]);
 
   if (loading) {
     return (
@@ -179,15 +182,16 @@ export default function ProjectDashboardPage() {
         <div className="flex flex-col items-end gap-2.5">
           <button
             type="button"
-            disabled
-            className="group inline-flex items-center gap-2 rounded-full bg-vizme-navy px-6 py-3 font-medium text-white shadow-soft transition-all opacity-60 cursor-not-allowed"
-            title="Disponible en el siguiente sprint"
+            onClick={() => setIngestOpen(true)}
+            disabled={!schema}
+            className="group inline-flex items-center gap-2 rounded-full bg-vizme-navy px-6 py-3 font-medium text-white shadow-soft transition-all hover:-translate-y-0.5 hover:bg-vizme-coral hover:shadow-glow-coral disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            title={schema ? 'Subir datos nuevos a este proyecto' : 'Necesitas un schema antes de ingerir datos'}
           >
             <UploadCloud size={16} />
             Subir nueva data
           </button>
           <p className="text-[10px] uppercase tracking-[0.14em] text-vizme-greyblue">
-            Ingesta recurrente · próximamente
+            Ingesta recurrente · Haiku anomalías
           </p>
         </div>
       </header>
@@ -301,11 +305,22 @@ export default function ProjectDashboardPage() {
             Tu dashboard en vivo llega en el siguiente sprint.
           </p>
           <p className="mx-auto mt-2 max-w-md text-sm text-vizme-greyblue text-pretty">
-            Cuando subas datos nuevos en la ingesta recurrente, aquí aparecerán tus KPIs,
-            anomalías detectadas e insights generados automáticamente.
+            Por ahora, sube datos nuevos para alimentar tu serie histórica — Haiku revisará
+            cada upload contra el patrón habitual y te avisará si hay anomalías.
           </p>
         </div>
       </section>
+
+      {/* Ingest modal */}
+      {schema && id && (
+        <IngestModal
+          open={ingestOpen}
+          onClose={() => setIngestOpen(false)}
+          projectId={id}
+          schema={schema}
+          onCompleted={() => setReloadKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 }

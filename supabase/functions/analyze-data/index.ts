@@ -10,6 +10,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.100.1';
 import { orchestrateBuildSchema } from '../_shared/chunkingOrchestrator.ts';
+import { callClaude } from '../_shared/claudeClient.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
@@ -22,6 +23,37 @@ interface BuildSchemaRequest {
   business_hint?: string;
   question?: string;
 }
+
+interface IngestExtractionPayload {
+  metric_id: string;
+  metric_name: string;
+  source_sheet: string | null;
+  source_column: string | null;
+  date_column: string | null;
+  aggregation: string;
+  confidence: 'high' | 'medium' | 'low';
+  data_points: Array<{
+    period_start: string;
+    period_end?: string;
+    value: number;
+    dimension_values: Record<string, string>;
+  }>;
+}
+
+interface IngestDataRequest {
+  mode: 'ingest_data';
+  project_id: string;
+  file_id: string;
+  extractions: IngestExtractionPayload[];
+}
+
+interface DetectAnomaliesRequest {
+  mode: 'detect_anomalies';
+  project_id: string;
+  source_file_id?: string;
+}
+
+type AnyRequest = BuildSchemaRequest | IngestDataRequest | DetectAnomaliesRequest;
 
 function isValidDigest(d: unknown): d is FileDigest {
   if (!d || typeof d !== 'object') return false;
@@ -214,6 +246,245 @@ async function handleBuildSchema(
   });
 }
 
+async function handleIngestData(
+  body: IngestDataRequest,
+  auth: AuthContext,
+  supabaseUrl: string,
+  serviceKey: string
+): Promise<Response> {
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  // Ownership checks
+  const { data: project, error: projErr } = await admin
+    .from('projects')
+    .select('id, user_id')
+    .eq('id', body.project_id)
+    .maybeSingle();
+  if (projErr) return errorResponse(500, 'Error consultando proyecto.', { detail: projErr.message });
+  if (!project || project.user_id !== auth.user_id)
+    return errorResponse(403, 'El proyecto no existe o no te pertenece.');
+
+  const { data: file, error: fileErr } = await admin
+    .from('files')
+    .select('id, project_id')
+    .eq('id', body.file_id)
+    .maybeSingle();
+  if (fileErr) return errorResponse(500, 'Error consultando archivo.', { detail: fileErr.message });
+  if (!file || file.project_id !== body.project_id)
+    return errorResponse(404, 'Archivo no encontrado en este proyecto.');
+
+  if (!Array.isArray(body.extractions) || body.extractions.length === 0)
+    return errorResponse(400, 'No vino ninguna extracción que persistir.');
+
+  // Flatten extractions → rows
+  const rows: Array<Record<string, unknown>> = [];
+  for (const ex of body.extractions) {
+    if (!Array.isArray(ex.data_points)) continue;
+    for (const p of ex.data_points) {
+      if (typeof p.value !== 'number' || !Number.isFinite(p.value)) continue;
+      if (!p.period_start || typeof p.period_start !== 'string') continue;
+      rows.push({
+        project_id: body.project_id,
+        metric_id: ex.metric_id,
+        dimension_values: p.dimension_values ?? {},
+        value: p.value,
+        period_start: p.period_start,
+        period_end: p.period_end ?? null,
+        source_file_id: body.file_id,
+      });
+    }
+  }
+
+  if (rows.length === 0)
+    return errorResponse(400, 'Las extracciones no contienen ningún dato numérico utilizable.');
+
+  // Bulk insert (chunk of 500)
+  let inserted = 0;
+  const errors: string[] = [];
+  for (let i = 0; i < rows.length; i += 500) {
+    const slice = rows.slice(i, i + 500);
+    const { error: insErr, count } = await admin.from('time_series_data').insert(slice, { count: 'exact' });
+    if (insErr) {
+      errors.push(insErr.message);
+    } else {
+      inserted += count ?? slice.length;
+    }
+  }
+
+  // Mark file as processed
+  await admin
+    .from('files')
+    .update({ processed_at: new Date().toISOString() })
+    .eq('id', body.file_id);
+
+  return json(200, {
+    inserted,
+    failed: rows.length - inserted,
+    errors: errors.length > 0 ? errors : undefined,
+    metrics_count: body.extractions.length,
+  });
+}
+
+async function handleDetectAnomalies(
+  body: DetectAnomaliesRequest,
+  auth: AuthContext,
+  supabaseUrl: string,
+  serviceKey: string
+): Promise<Response> {
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  // Ownership
+  const { data: project, error: projErr } = await admin
+    .from('projects')
+    .select('id, user_id, name')
+    .eq('id', body.project_id)
+    .maybeSingle();
+  if (projErr) return errorResponse(500, 'Error consultando proyecto.', { detail: projErr.message });
+  if (!project || project.user_id !== auth.user_id)
+    return errorResponse(403, 'El proyecto no existe o no te pertenece.');
+
+  // Get latest schema for metric metadata
+  const { data: schemas, error: sErr } = await admin
+    .from('business_schemas')
+    .select('metrics, business_identity')
+    .eq('project_id', body.project_id)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (sErr) return errorResponse(500, 'No pudimos leer el schema.', { detail: sErr.message });
+  const schema = schemas?.[0];
+  if (!schema) return errorResponse(400, 'Este proyecto no tiene schema todavía.');
+
+  // Get last N=200 time-series points for context (recent + historical)
+  const { data: tsPoints, error: tsErr } = await admin
+    .from('time_series_data')
+    .select('metric_id, value, period_start, source_file_id')
+    .eq('project_id', body.project_id)
+    .order('period_start', { ascending: false })
+    .limit(200);
+  if (tsErr) return errorResponse(500, 'No pudimos leer el historial de datos.', { detail: tsErr.message });
+  if (!tsPoints || tsPoints.length === 0)
+    return json(200, { anomalies: [], message: 'Aún no hay suficiente histórico para detectar anomalías.' });
+
+  // Group by metric, separate latest-file vs historic
+  const byMetric = new Map<string, Array<{ value: number; period_start: string; is_latest: boolean }>>();
+  for (const p of tsPoints) {
+    if (!byMetric.has(p.metric_id)) byMetric.set(p.metric_id, []);
+    byMetric.get(p.metric_id)!.push({
+      value: Number(p.value),
+      period_start: p.period_start,
+      is_latest: body.source_file_id ? p.source_file_id === body.source_file_id : false,
+    });
+  }
+
+  // Build compact context for Haiku
+  const metricsMap = new Map<string, { name: string; unit: string; good_direction: string; format: string }>();
+  for (const m of (schema.metrics as Array<{ id: string; name: string; unit: string; good_direction: string; format: string }> | null) ?? []) {
+    metricsMap.set(m.id, { name: m.name, unit: m.unit, good_direction: m.good_direction, format: m.format });
+  }
+
+  const contextLines: string[] = [];
+  byMetric.forEach((points, metricId) => {
+    const meta = metricsMap.get(metricId);
+    if (!meta) return;
+    const sorted = [...points].sort((a, b) => a.period_start.localeCompare(b.period_start));
+    contextLines.push(
+      `Metric: ${meta.name} (${meta.unit}, mejor=${meta.good_direction}) — series:\n` +
+        sorted
+          .slice(-12)
+          .map((p) => `  ${p.period_start}: ${p.value.toFixed(2)}${p.is_latest ? ' [NUEVO]' : ''}`)
+          .join('\n')
+    );
+  });
+
+  const industry = (schema.business_identity as { industry?: string })?.industry ?? 'desconocida';
+
+  const systemPrompt = `Eres un analista de datos senior detectando anomalías en métricas de negocio.
+Industria del negocio: ${industry}.
+
+Vas a recibir series temporales por métrica. Algunos puntos están marcados como [NUEVO] — son los que acaban de subirse.
+
+Tu trabajo:
+1. Comparar los puntos [NUEVO] contra el patrón histórico de cada métrica (estacionalidad, tendencia, varianza típica).
+2. Identificar anomalías reales: caídas/subidas fuera del rango habitual, cambios de tendencia, outliers.
+3. Ignorar variaciones normales — sólo reporta lo que un dueño de negocio querría saber.
+
+Devuelve JSON estricto, en español mexicano, con la forma:
+{
+  "anomalies": [
+    {
+      "metric_name": "string",
+      "severity": "low" | "medium" | "high",
+      "title": "string corta de máx 80 chars",
+      "explanation": "1-2 oraciones explicando qué pasó y contra qué se compara",
+      "data_snapshot": { "current": number, "expected_range": [number, number], "deviation_pct": number }
+    }
+  ]
+}
+
+Si no hay anomalías significativas, devuelve { "anomalies": [] }.`;
+
+  const userPrompt = contextLines.join('\n\n') || 'No hay datos suficientes.';
+
+  let claudeResp;
+  try {
+    claudeResp = await callClaude({
+      model: 'haiku-4-5',
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      max_tokens: 2048,
+      temperature: 0,
+    });
+  } catch (err) {
+    return errorResponse(502, 'Haiku falló analizando anomalías.', { detail: (err as Error).message });
+  }
+
+  // Parse JSON response (Haiku may wrap in ```json fences)
+  let parsed: { anomalies: Array<{ metric_name: string; severity: 'low' | 'medium' | 'high'; title: string; explanation: string; data_snapshot?: unknown }> };
+  try {
+    const cleaned = claudeResp.text.replace(/```json\s*/i, '').replace(/```\s*$/, '').trim();
+    parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed.anomalies)) throw new Error('Sin campo anomalies');
+  } catch (err) {
+    return errorResponse(502, 'Haiku devolvió formato inválido.', {
+      detail: (err as Error).message,
+      raw: claudeResp.text.slice(0, 300),
+    });
+  }
+
+  // Persist as insights
+  const inserts = parsed.anomalies.map((a) => ({
+    project_id: body.project_id,
+    type: 'anomaly' as const,
+    title: a.title,
+    content: a.explanation,
+    data_snapshot: a.data_snapshot ?? null,
+    model_used: 'haiku-4-5',
+    priority: a.severity === 'high' ? 3 : a.severity === 'medium' ? 2 : 1,
+  }));
+
+  let insightIds: string[] = [];
+  if (inserts.length > 0) {
+    const { data: rows, error: insErr } = await admin
+      .from('insights')
+      .insert(inserts)
+      .select('id');
+    if (insErr) {
+      return errorResponse(500, 'No pudimos guardar las anomalías detectadas.', { detail: insErr.message });
+    }
+    insightIds = (rows ?? []).map((r: { id: string }) => r.id);
+  }
+
+  return json(200, {
+    anomalies: parsed.anomalies,
+    insight_ids: insightIds,
+    usage: {
+      model: 'haiku-4-5',
+      tokens_input: claudeResp.tokens_input,
+      tokens_output: claudeResp.tokens_output,
+    },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return errorResponse(405, 'Método no permitido. Usa POST.');
 
@@ -230,9 +501,9 @@ Deno.serve(async (req) => {
     return errorResponse(401, (err as Error).message);
   }
 
-  let body: BuildSchemaRequest;
+  let body: AnyRequest;
   try {
-    body = (await req.json()) as BuildSchemaRequest;
+    body = (await req.json()) as AnyRequest;
   } catch (_) {
     return errorResponse(400, 'Body inválido (JSON malformado).');
   }
@@ -243,6 +514,10 @@ Deno.serve(async (req) => {
   switch (body.mode) {
     case 'build_schema':
       return await handleBuildSchema(body, auth, supabaseUrl, serviceKey);
+    case 'ingest_data':
+      return await handleIngestData(body, auth, supabaseUrl, serviceKey);
+    case 'detect_anomalies':
+      return await handleDetectAnomalies(body, auth, supabaseUrl, serviceKey);
     default:
       return errorResponse(400, `Modo no soportado aún: ${(body as { mode: string }).mode}`);
   }
