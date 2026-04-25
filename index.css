@@ -2,7 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background-color: #EBF8FE;
+    color: #02222F;
+  }
+  ::selection {
+    background-color: rgba(245, 74, 67, 0.22);
+    color: #02222F;
+  }
+  /* Subtle Fraunces axes for editorial display use */
+  .font-display {
+    font-variation-settings: 'opsz' 144, 'SOFT' 30;
+    letter-spacing: -0.022em;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+  }
+  .glass-panel-dark {
+    background: rgba(2, 34, 47, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+    opacity: 0.035;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    border-radius: inherit;
+  }
+  .editorial-rule {
+    background-image: linear-gradient(to right, transparent, rgba(2, 34, 47, 0.15), transparent);
+    height: 1px;
+  }
+  .label-eyebrow {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #566970;
+  }
+  .btn-coral {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-vizme-coral px-6 py-3 font-medium text-white transition-all duration-200 shadow-glow-coral hover:bg-vizme-orange hover:-translate-y-0.5 hover:shadow-glow-coral active:translate-y-0;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-vizme-greyblue/30 px-6 py-3 font-medium text-vizme-navy transition-all duration-200 hover:border-vizme-navy hover:bg-vizme-navy/5;
+  }
+  .input-vizme {
+    @apply w-full rounded-2xl border border-vizme-greyblue/25 bg-white px-4 py-3 text-vizme-navy placeholder:text-vizme-greyblue/60 transition-colors duration-200 focus:border-vizme-coral focus:outline-none focus:ring-4 focus:ring-vizme-coral/15;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
 }
