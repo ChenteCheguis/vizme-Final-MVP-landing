@@ -449,7 +449,7 @@ async function main() {
 
   console.log('\n📦 Construyendo digest en cliente (parseo local, no Edge Function)...');
   const t0Digest = performance.now();
-  const digest = buildFileDigest({ buffer: fileBytes, file_name: uploaded.fileName });
+  const digest = await buildFileDigest({ buffer: fileBytes, file_name: uploaded.fileName });
   const digestJson = JSON.stringify(digest);
   const digestKb = (digestJson.length / 1024).toFixed(1);
   const approxTokens = Math.ceil(digestJson.length / 4);

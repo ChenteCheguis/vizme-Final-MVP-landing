@@ -7,9 +7,14 @@
 // Regla dura: NO cortar filas en mitad de una hoja — las filas
 // "Total", "Gran Total", "Resumen" suelen estar enterradas.
 //
-// NOTA: No se aplica enforcement de tokens — el digest se devuelve
-// íntegro. La estrategia actual prioriza análisis certero sobre
-// optimización de costo durante el onboarding (Diego Apr 2026).
+// Diseño asíncrono con onProgress: emite eventos de progreso
+// en checkpoints reales (XLSX.read, por hoja, scan de filas
+// notables, sample picking) y cede al event loop entre etapas
+// para que el browser pinte el progreso real al usuario.
+//
+// Principio de diseño (Diego, abril 2026): NUNCA matar un
+// parseo legítimo con timeouts arbitrarios. Si tarda, que
+// tarde — el usuario debe ver progreso real, no spinners mudos.
 // ============================================================
 
 import * as XLSX from 'xlsx';
@@ -50,6 +55,21 @@ export interface FileDigest {
   sheets_summary: SheetSummary[];
   sample_sheets: SampleSheet[];
   notable_rows: NotableRow[];
+}
+
+export type DigestProgressStage =
+  | 'reading_workbook'
+  | 'workbook_parsed'
+  | 'processing_sheet'
+  | 'scanning_notable_rows'
+  | 'picking_samples'
+  | 'done';
+
+export interface DigestProgressEvent {
+  stage: DigestProgressStage;
+  message: string;
+  percent: number; // 0–100
+  detail?: Record<string, string | number>;
 }
 
 const NOTABLE_KEYWORDS = [
@@ -136,14 +156,56 @@ function pickSampleIndexes(total: number): number[] {
   return unique.sort((a, b) => a - b);
 }
 
+// Yield to the event loop so the browser can paint progress updates
+// between sync-heavy chunks. setTimeout(0) gives the layout a tick.
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 export interface BuildDigestArgs {
   buffer: ArrayBuffer | Uint8Array;
   file_name: string;
+  onProgress?: (event: DigestProgressEvent) => void;
 }
 
-export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDigest {
-  const wb = XLSX.read(buffer, { type: 'array', raw: true, dateNF: 'yyyy-mm-dd', cellDates: true });
+export async function buildFileDigest({
+  buffer,
+  file_name,
+  onProgress,
+}: BuildDigestArgs): Promise<FileDigest> {
+  const emit = (event: DigestProgressEvent) => {
+    try {
+      onProgress?.(event);
+    } catch {
+      // Never let a faulty progress callback block parsing.
+    }
+  };
+
+  emit({ stage: 'reading_workbook', message: 'Leyendo encabezados del archivo…', percent: 2 });
+  await tick();
+
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(buffer, { type: 'array', raw: true, dateNF: 'yyyy-mm-dd', cellDates: true });
+  } catch (err) {
+    throw new Error(
+      `No pudimos abrir el archivo (${(err as Error).message ?? 'formato desconocido'}). ` +
+        'Verifica que sea un Excel o CSV válido.'
+    );
+  }
+
   const sheet_names = wb.SheetNames;
+  if (sheet_names.length === 0) {
+    throw new Error('El archivo no contiene hojas legibles.');
+  }
+
+  emit({
+    stage: 'workbook_parsed',
+    message: `Estructura detectada — ${sheet_names.length} hoja${sheet_names.length === 1 ? '' : 's'}`,
+    percent: 8,
+    detail: { total_sheets: sheet_names.length },
+  });
+  await tick();
 
   const sheets_summary: SheetSummary[] = [];
   const notable_rows: NotableRow[] = [];
@@ -151,7 +213,23 @@ export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDig
 
   const perSheetRows = new Map<string, Array<Array<string | number | null>>>();
 
-  for (const name of sheet_names) {
+  // Sheet processing budget (8 → 85%). Per-sheet share is uniform.
+  const sheetBudgetStart = 10;
+  const sheetBudgetEnd = 85;
+  const sheetBudgetSpan = sheetBudgetEnd - sheetBudgetStart;
+
+  for (let s = 0; s < sheet_names.length; s++) {
+    const name = sheet_names[s];
+    const sheetBase = sheetBudgetStart + Math.floor((s / sheet_names.length) * sheetBudgetSpan);
+
+    emit({
+      stage: 'processing_sheet',
+      message: `Procesando hoja "${name}" (${s + 1}/${sheet_names.length})…`,
+      percent: sheetBase,
+      detail: { sheet_name: name, sheet_index: s + 1, total_sheets: sheet_names.length },
+    });
+    await tick();
+
     const ws = wb.Sheets[name];
     const rows = sheetToRows(ws);
     perSheetRows.set(name, rows);
@@ -171,18 +249,40 @@ export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDig
       header_candidates,
     });
 
-    rows.forEach((row, idx) => {
+    // Notable-row scan with periodic yield for very large sheets.
+    // 1000 rows is a comfortable batch — past that we let the browser breathe.
+    const ROW_YIELD_BATCH = 1000;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
       const hit = detectNotableRow(row);
       if (hit) {
         notable_rows.push({
           sheet_name: name,
-          row_index: idx,
+          row_index: r,
           content: row,
           matched_keyword: hit.keyword,
         });
       }
-    });
+      if (r > 0 && r % ROW_YIELD_BATCH === 0) {
+        const intra = Math.floor((r / rows.length) * (sheetBudgetSpan / sheet_names.length));
+        emit({
+          stage: 'scanning_notable_rows',
+          message: `Hoja "${name}" — ${r.toLocaleString('es-MX')} de ${rows.length.toLocaleString('es-MX')} filas`,
+          percent: Math.min(sheetBudgetEnd, sheetBase + intra),
+          detail: { sheet_name: name, processed: r, total: rows.length },
+        });
+        await tick();
+      }
+    }
   }
+
+  emit({
+    stage: 'picking_samples',
+    message: 'Seleccionando hojas representativas…',
+    percent: 90,
+    detail: { total_rows: total_rows_approx, notable_rows: notable_rows.length },
+  });
+  await tick();
 
   const sampleIdx = pickSampleIndexes(sheet_names.length);
   const sample_sheets: SampleSheet[] = sampleIdx.map((i) => {
@@ -194,7 +294,7 @@ export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDig
     };
   });
 
-  return {
+  const digest: FileDigest = {
     file_name,
     file_type: detectFileType(file_name),
     total_sheets: sheet_names.length,
@@ -203,4 +303,18 @@ export function buildFileDigest({ buffer, file_name }: BuildDigestArgs): FileDig
     sample_sheets,
     notable_rows,
   };
+
+  emit({
+    stage: 'done',
+    message: 'Listo para analizar',
+    percent: 100,
+    detail: {
+      total_sheets: digest.total_sheets,
+      total_rows: digest.total_rows_approx,
+      notable_rows: digest.notable_rows.length,
+      sample_sheets: digest.sample_sheets.length,
+    },
+  });
+
+  return digest;
 }

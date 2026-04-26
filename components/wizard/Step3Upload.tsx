@@ -1,7 +1,24 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { ArrowLeft, ArrowRight, FileSpreadsheet, FileType2, Loader2, UploadCloud, X, Layers, Database, Cpu } from 'lucide-react';
-import { buildFileDigest, type FileDigest } from '../../lib/fileDigest';
+import {
+  ArrowLeft,
+  ArrowRight,
+  FileSpreadsheet,
+  FileType2,
+  Loader2,
+  UploadCloud,
+  X,
+  Layers,
+  Database,
+  Cpu,
+  AlertTriangle,
+  RefreshCw,
+} from 'lucide-react';
+import {
+  buildFileDigest,
+  type FileDigest,
+  type DigestProgressEvent,
+} from '../../lib/fileDigest';
 
 interface Props {
   file: File | null;
@@ -23,7 +40,7 @@ const HARD_LIMIT_BYTES = 50 * 1024 * 1024; // 50MB hard ceiling
 export default function Step3Upload({
   file,
   digest,
-  parsing,
+  parsing: _parsingFromParent,
   parseError,
   onSelectFile,
   onParseSuccess,
@@ -33,16 +50,33 @@ export default function Step3Upload({
   onAnalyze,
   isUploading,
 }: Props) {
+  // Local progress state, fed by buildFileDigest's onProgress callback.
+  // We keep it local so the parent's reducer doesn't re-render the whole wizard
+  // on every batch update.
+  const [progress, setProgress] = useState<DigestProgressEvent | null>(null);
+  // Token used to drop progress events from a previous parse (e.g. user dropped
+  // a new file while the old one was still streaming). Ref-based so updates
+  // don't trigger renders.
+  const parseTokenRef = useRef(0);
+
   const onDrop = useCallback(
     (accepted: File[]) => {
       const f = accepted[0];
       if (!f) return;
+      console.log('[VIZME] Step3 — file dropped:', {
+        name: f.name,
+        size_bytes: f.size,
+        size_mb: (f.size / (1024 * 1024)).toFixed(2),
+        type: f.type,
+        timestamp: new Date().toISOString(),
+      });
       if (f.size > HARD_LIMIT_BYTES) {
         onParseError(
           'Este archivo es demasiado grande para nuestro plan actual. Planes Enterprise soportan archivos sin límite — escríbenos.'
         );
         return;
       }
+      setProgress(null);
       onSelectFile(f);
     },
     [onSelectFile, onParseError]
@@ -58,30 +92,89 @@ export default function Step3Upload({
     },
   });
 
-  // Parse file as soon as it lands
+  // Parse file as soon as it lands.
+  // GUARD: only the absence of a digest or a real error stops us — NOT the
+  // parsing flag (that was the Sprint 3 silent-failure bug — the parent
+  // dispatched START_PARSING_FILE which set parsing=true synchronously, so
+  // the effect's guard returned early and the parse never started).
   useEffect(() => {
-    if (!file || digest || parsing || parseError) return;
+    if (!file || digest || parseError) return;
+
+    const myToken = ++parseTokenRef.current;
     let cancelled = false;
+    const startedAt = performance.now();
+
+    console.log('[VIZME] Step3 — buildFileDigest START', {
+      file_name: file.name,
+      size_bytes: file.size,
+      token: myToken,
+    });
+
     (async () => {
       try {
         const buf = await file.arrayBuffer();
-        if (cancelled) return;
-        const result = buildFileDigest({ buffer: buf, file_name: file.name });
-        if (cancelled) return;
+        if (cancelled || parseTokenRef.current !== myToken) return;
+
+        const result = await buildFileDigest({
+          buffer: buf,
+          file_name: file.name,
+          onProgress: (event) => {
+            if (cancelled || parseTokenRef.current !== myToken) return;
+            console.log('[fileDigest] progress', {
+              stage: event.stage,
+              percent: event.percent,
+              message: event.message,
+              detail: event.detail,
+            });
+            setProgress(event);
+          },
+        });
+
+        if (cancelled || parseTokenRef.current !== myToken) return;
+
+        const duration = performance.now() - startedAt;
+        console.log('[VIZME] Step3 — buildFileDigest SUCCESS', {
+          duration_ms: Math.round(duration),
+          total_sheets: result.total_sheets,
+          total_rows: result.total_rows_approx,
+          sample_sheets: result.sample_sheets.length,
+          notable_rows: result.notable_rows.length,
+          digest_size_chars: JSON.stringify(result).length,
+        });
+
         onParseSuccess(result);
       } catch (err) {
-        if (cancelled) return;
-        onParseError((err as Error).message ?? 'No pudimos leer este archivo. Verifica que no esté corrupto.');
+        if (cancelled || parseTokenRef.current !== myToken) return;
+        const duration = performance.now() - startedAt;
+        const message = (err as Error).message ?? 'No pudimos leer este archivo. Verifica que no esté corrupto.';
+        console.error('[VIZME] Step3 — buildFileDigest FAILED', {
+          duration_ms: Math.round(duration),
+          error: message,
+          stack: (err as Error).stack,
+        });
+        onParseError(message);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [file, digest, parsing, parseError, onParseSuccess, onParseError]);
+    // We deliberately omit onParseSuccess/onParseError from deps — they're
+    // stable references from the reducer dispatch. Including them caused the
+    // effect to re-fire mid-parse on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, digest, parseError]);
+
+  // Reset progress when file is cleared
+  useEffect(() => {
+    if (!file) setProgress(null);
+  }, [file]);
 
   const tokenEstimate = digest ? estimateDigestTokens(digest) : 0;
   const fileSizeMb = file ? (file.size / (1024 * 1024)).toFixed(2) : null;
   const tooLargeForFreemium = file && file.size > MAX_FILE_BYTES;
+
+  const isCurrentlyParsing = !!file && !digest && !parseError;
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
@@ -130,7 +223,7 @@ export default function Step3Upload({
           </div>
         ) : (
           <div className="space-y-5 animate-fade-in">
-            <FilePreview file={file} sizeMb={fileSizeMb!} onClear={onClear} disabled={isUploading} />
+            <FilePreview file={file} sizeMb={fileSizeMb!} onClear={onClear} disabled={isUploading || isCurrentlyParsing} />
 
             {tooLargeForFreemium && (
               <div className="rounded-2xl border border-vizme-coral/30 bg-vizme-coral/8 px-4 py-3 text-sm text-vizme-coral">
@@ -139,11 +232,15 @@ export default function Step3Upload({
               </div>
             )}
 
-            <ParsingProgress parsing={parsing} digest={digest} error={parseError} />
+            <ParseStatus
+              parsing={isCurrentlyParsing}
+              progress={progress}
+              digest={digest}
+              error={parseError}
+              onRetry={onClear}
+            />
 
-            {digest && !parseError && (
-              <DigestStats digest={digest} estTokens={tokenEstimate} />
-            )}
+            {digest && !parseError && <DigestStats digest={digest} estTokens={tokenEstimate} />}
           </div>
         )}
 
@@ -151,7 +248,7 @@ export default function Step3Upload({
           <button
             type="button"
             onClick={onBack}
-            disabled={isUploading}
+            disabled={isUploading || isCurrentlyParsing}
             className="inline-flex items-center gap-2 text-sm font-medium text-vizme-greyblue transition-colors hover:text-vizme-navy disabled:opacity-50"
           >
             <ArrowLeft size={16} />
@@ -160,7 +257,7 @@ export default function Step3Upload({
           <button
             type="button"
             onClick={onAnalyze}
-            disabled={!digest || parsing || isUploading || !!parseError}
+            disabled={!digest || isCurrentlyParsing || isUploading || !!parseError}
             className="group inline-flex items-center gap-2 rounded-full bg-vizme-coral px-7 py-3 font-medium text-white shadow-glow-coral transition-all duration-200 hover:-translate-y-0.5 hover:bg-vizme-orange disabled:cursor-not-allowed disabled:bg-vizme-greyblue/35 disabled:shadow-none disabled:translate-y-0"
           >
             {isUploading ? (
@@ -240,30 +337,77 @@ function FilePreview({
   );
 }
 
-function ParsingProgress({
+function ParseStatus({
   parsing,
+  progress,
   digest,
   error,
+  onRetry,
 }: {
   parsing: boolean;
+  progress: DigestProgressEvent | null;
   digest: FileDigest | null;
   error: string | null;
+  onRetry: () => void;
 }) {
+  // Real error from parse: actionable card
   if (error) {
     return (
-      <div className="rounded-2xl border border-vizme-coral/30 bg-vizme-coral/8 px-4 py-3 text-sm text-vizme-coral">
-        {error}
+      <div className="rounded-2xl border border-vizme-coral/30 bg-vizme-coral/8 p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-vizme-coral text-white">
+            <AlertTriangle size={15} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-vizme-coral">
+              No pudimos procesar tu archivo
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-vizme-navy">{error}</p>
+            <p className="mt-2 text-xs leading-relaxed text-vizme-greyblue">
+              Causas comunes: archivo dañado, formato inusual, o supera el plan actual.
+            </p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-vizme-coral hover:underline"
+            >
+              <RefreshCw size={12} />
+              Subir otro archivo
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
+
   if (parsing) {
+    const percent = progress?.percent ?? 0;
+    const message = progress?.message ?? 'Leyendo encabezados del archivo…';
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-vizme-navy/8 bg-white/80 px-4 py-3 text-sm text-vizme-navy">
-        <Loader2 size={16} className="animate-spin text-vizme-coral" />
-        Leyendo y resumiendo tu archivo…
+      <div className="space-y-2.5 rounded-2xl border border-vizme-navy/8 bg-white/85 px-4 py-4 backdrop-blur">
+        <div className="flex items-center gap-3 text-sm text-vizme-navy">
+          <Loader2 size={16} className="animate-spin text-vizme-coral shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{message}</span>
+          <span className="font-mono text-xs text-vizme-greyblue tabular-nums">
+            {Math.round(percent)}%
+          </span>
+        </div>
+        <div className="relative h-1.5 overflow-hidden rounded-full bg-vizme-navy/8">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-vizme-coral via-vizme-orange to-vizme-coral bg-[length:200%_100%] animate-shimmer transition-all duration-300"
+            style={{ width: `${Math.max(4, Math.min(100, percent))}%` }}
+          />
+        </div>
+        {progress?.detail?.processed !== undefined && progress?.detail?.total !== undefined && (
+          <p className="text-[11px] text-vizme-greyblue">
+            {(progress.detail.processed as number).toLocaleString('es-MX')} de{' '}
+            {(progress.detail.total as number).toLocaleString('es-MX')} filas
+          </p>
+        )}
       </div>
     );
   }
+
   if (digest) {
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-700">
@@ -274,6 +418,7 @@ function ParsingProgress({
       </div>
     );
   }
+
   return null;
 }
 
