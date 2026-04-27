@@ -11,6 +11,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.100.1';
 import { orchestrateBuildSchema } from '../_shared/chunkingOrchestrator.ts';
 import { callClaude } from '../_shared/claudeClient.ts';
+import { corsHeaders } from '../_shared/cors.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
@@ -76,7 +77,7 @@ interface AuthContext {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { ...corsHeaders, 'content-type': 'application/json' },
   });
 
 const errorResponse = (status: number, message: string, extra?: Record<string, unknown>) =>
@@ -486,6 +487,9 @@ Si no hay anomalías significativas, devuelve { "anomalies": [] }.`;
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
   if (req.method !== 'POST') return errorResponse(405, 'Método no permitido. Usa POST.');
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
