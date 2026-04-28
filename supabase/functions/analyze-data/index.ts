@@ -21,6 +21,11 @@ import {
   validateDashboardBlueprint,
   countTotalWidgets,
 } from '../_shared/dashboardBlueprintValidator.ts';
+import {
+  calculateAllMetrics,
+  type MetricMeta,
+  type TimeSeriesPoint as MCPoint,
+} from '../_shared/metricCalculator.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
@@ -355,6 +360,7 @@ async function handleIngestData(
     failed: rows.length - inserted,
     errors: errors.length > 0 ? errors : undefined,
     metrics_count: body.extractions.length,
+    needs_recalculation: inserted > 0,
   });
 }
 
@@ -698,12 +704,98 @@ async function handleBuildDashboardBlueprint(
 }
 
 async function handleRecalculateMetrics(
-  _body: RecalculateMetricsRequest,
-  _auth: AuthContext,
-  _supabaseUrl: string,
-  _serviceKey: string
+  body: RecalculateMetricsRequest,
+  auth: AuthContext,
+  supabaseUrl: string,
+  serviceKey: string
 ): Promise<Response> {
-  return errorResponse(501, 'recalculate_metrics aún no implementado.');
+  const admin = createClient(supabaseUrl, serviceKey);
+  const t0 = Date.now();
+
+  const { data: project, error: projErr } = await admin
+    .from('projects')
+    .select('id, user_id')
+    .eq('id', body.project_id)
+    .maybeSingle();
+  if (projErr) return errorResponse(500, 'Error consultando proyecto.', { detail: projErr.message });
+  if (!project || project.user_id !== auth.user_id)
+    return errorResponse(403, 'El proyecto no existe o no te pertenece.');
+
+  // Schema activo (último por version)
+  const { data: schemas, error: sErr } = await admin
+    .from('business_schemas')
+    .select('metrics')
+    .eq('project_id', body.project_id)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (sErr) return errorResponse(500, 'No pudimos leer el schema.', { detail: sErr.message });
+  const schema = schemas?.[0];
+  if (!schema) return errorResponse(400, 'Este proyecto no tiene schema todavía.');
+
+  const metrics = ((schema.metrics ?? []) as Array<MetricMeta>).filter((m) => !!m.id);
+  if (metrics.length === 0)
+    return json(200, { metrics_calculated: 0, duration_ms: 0, message: 'Schema sin métricas.' });
+
+  // Time series points
+  const { data: tsRows, error: tsErr } = await admin
+    .from('time_series_data')
+    .select('metric_id, value, period_start, dimension_values')
+    .eq('project_id', body.project_id);
+  if (tsErr) return errorResponse(500, 'Error leyendo histórico.', { detail: tsErr.message });
+
+  const points: MCPoint[] = (tsRows ?? []).map((r) => ({
+    metric_id: r.metric_id as string,
+    value: Number(r.value),
+    period_start: r.period_start as string,
+    dimension_values: (r.dimension_values ?? null) as Record<string, unknown> | null,
+  }));
+
+  // Reference date = max(period_start) (preferimos la fecha más reciente
+  // observada en los datos; si pasamos Date.now() y los datos son de 2023,
+  // todos los períodos relativos quedarían vacíos).
+  let refDateMs = Date.now();
+  if (points.length > 0) {
+    const maxIso = points
+      .map((p) => p.period_start)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    if (maxIso) {
+      const t = new Date(maxIso).getTime();
+      if (Number.isFinite(t)) refDateMs = t;
+    }
+  }
+
+  const calculated = calculateAllMetrics({ metrics, points, refDateMs });
+
+  // UPSERT por (project_id, metric_id, period)
+  const rows = calculated.map((c) => ({
+    project_id: body.project_id,
+    metric_id: c.metric_id,
+    period: c.period,
+    value: c.value as unknown as Record<string, unknown>,
+    calculated_at: new Date().toISOString(),
+  }));
+
+  // upsert in chunks of 100 (avoid huge single payload)
+  const chunkSize = 100;
+  let written = 0;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const slice = rows.slice(i, i + chunkSize);
+    const { error: upErr, count } = await admin
+      .from('metric_calculations')
+      .upsert(slice, { onConflict: 'project_id,metric_id,period', count: 'exact' });
+    if (upErr)
+      return errorResponse(500, 'Error guardando metric_calculations.', { detail: upErr.message });
+    written += count ?? slice.length;
+  }
+
+  return json(200, {
+    metrics_calculated: metrics.length,
+    rows_upserted: written,
+    duration_ms: Date.now() - t0,
+    needs_recalculation: false,
+  });
 }
 
 async function handleGenerateInsights(
