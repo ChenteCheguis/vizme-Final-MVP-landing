@@ -22,20 +22,34 @@ import { performance } from 'node:perf_hooks';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { buildFileDigest, type FileDigest } from '../lib/fileDigest';
 
+type Mode = 'schema' | 'dashboard' | 'metrics' | 'insights';
+
 type Args = {
+  mode: Mode;
   file?: string;
   hint?: string;
   question?: string;
   cleanup?: boolean;
   deleteUser?: boolean;
+  schemaId?: string;
+  projectId?: string;
+  pageId?: string;
 };
 
 function parseArgs(argv: string[]): Args {
-  const out: Args = {};
+  const out: Args = { mode: 'schema' };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const next = argv[i + 1];
-    if (flag === '--file') {
+    if (flag === '--mode') {
+      const m = next as Mode;
+      if (!['schema', 'dashboard', 'metrics', 'insights'].includes(m)) {
+        console.error(`❌ Modo inválido: ${m}. Usa schema | dashboard | metrics | insights.`);
+        process.exit(1);
+      }
+      out.mode = m;
+      i++;
+    } else if (flag === '--file') {
       out.file = next;
       i++;
     } else if (flag === '--hint') {
@@ -44,17 +58,37 @@ function parseArgs(argv: string[]): Args {
     } else if (flag === '--question') {
       out.question = next;
       i++;
+    } else if (flag === '--schema-id') {
+      out.schemaId = next;
+      i++;
+    } else if (flag === '--project-id') {
+      out.projectId = next;
+      i++;
+    } else if (flag === '--page-id') {
+      out.pageId = next;
+      i++;
     } else if (flag === '--cleanup') {
       out.cleanup = true;
     } else if (flag === '--delete-user') {
       out.deleteUser = true;
     }
   }
-  if (!out.cleanup && !out.file) {
-    console.error('❌ Falta --file <path> (o usa --cleanup). Ejemplos:');
+  if (out.mode === 'schema' && !out.cleanup && !out.file) {
+    console.error('❌ schema mode requiere --file <path> (o usa --cleanup). Ejemplos:');
     console.error('   npm run test:analyze -- --file ./data/ventas.xlsx');
     console.error('   npm run test:analyze -- --cleanup');
-    console.error('   npm run test:analyze -- --cleanup --delete-user');
+    process.exit(1);
+  }
+  if (out.mode === 'dashboard' && (!out.schemaId || !out.projectId)) {
+    console.error('❌ dashboard mode requiere --project-id <uuid> --schema-id <uuid>.');
+    process.exit(1);
+  }
+  if (out.mode === 'metrics' && !out.projectId) {
+    console.error('❌ metrics mode requiere --project-id <uuid>.');
+    process.exit(1);
+  }
+  if (out.mode === 'insights' && (!out.projectId || !out.pageId)) {
+    console.error('❌ insights mode requiere --project-id <uuid> --page-id <id>.');
     process.exit(1);
   }
   return out;
@@ -394,6 +428,69 @@ function cost(tokensIn: number, tokensOut: number, cachedRead: number, cachedWri
   return `$${usd.toFixed(4)} USD`;
 }
 
+async function runEdgeMode(
+  args: Args,
+  url: string,
+  anonKey: string,
+  email: string,
+  password: string
+): Promise<void> {
+  const sb = createClient(url, anonKey, { auth: { persistSession: false } });
+  const { data: signin, error: siErr } = await sb.auth.signInWithPassword({ email, password });
+  if (siErr || !signin?.session) {
+    dumpError('signInWithPassword falló', siErr);
+    process.exit(1);
+  }
+  const accessToken = signin.session.access_token;
+
+  let body: Record<string, unknown>;
+  if (args.mode === 'dashboard') {
+    body = { mode: 'build_dashboard_blueprint', project_id: args.projectId, schema_id: args.schemaId };
+  } else if (args.mode === 'metrics') {
+    body = { mode: 'recalculate_metrics', project_id: args.projectId };
+  } else {
+    body = { mode: 'generate_insights', project_id: args.projectId, page_id: args.pageId };
+  }
+
+  console.log(`\n🚀 Invocando ${body.mode}...`);
+  const t0 = performance.now();
+  const res = await fetch(`${url}/functions/v1/analyze-data`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${accessToken}`,
+      apikey: anonKey,
+    },
+    body: JSON.stringify(body),
+  });
+  const elapsed = performance.now() - t0;
+  const json = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    console.error(`❌ ${res.status} en ${elapsed.toFixed(0)}ms`);
+    console.error(JSON.stringify(json, null, 2));
+    process.exit(1);
+  }
+
+  console.log(`\n✅ OK en ${elapsed.toFixed(0)}ms`);
+  if (args.mode === 'dashboard') {
+    console.log(`   sophistication: ${json.sophistication_level}`);
+    console.log(`   pages:          ${json.total_pages}`);
+    console.log(`   widgets:        ${json.total_widgets}`);
+    console.log(`   strategy:       ${json.layout_strategy}`);
+    const pages = (json.pages as Array<{ title: string; sections?: unknown[] }> | undefined) ?? [];
+    pages.forEach((p, i) => {
+      console.log(`   ${i + 1}. ${p.title} (${p.sections?.length ?? 0} secciones)`);
+    });
+    const usage = json.usage as { tokens_input: number; tokens_output: number; tokens_cached_read: number; tokens_cached_write: number };
+    if (usage) console.log(`   costo:          ${cost(usage.tokens_input, usage.tokens_output, usage.tokens_cached_read, usage.tokens_cached_write)}`);
+  } else if (args.mode === 'metrics') {
+    console.log(`   metrics_calculated: ${json.metrics_calculated}`);
+    console.log(`   duration_ms:        ${json.duration_ms}`);
+  } else {
+    console.log(`   insights_generated: ${(json.insights as unknown[] | undefined)?.length ?? 0}`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const env = await loadEnv();
@@ -410,6 +507,11 @@ async function main() {
 
   if (args.cleanup) {
     await runCleanup(admin0, email, args.deleteUser ?? false);
+    return;
+  }
+
+  if (args.mode !== 'schema') {
+    await runEdgeMode(args, url, anonKey, email, password);
     return;
   }
 

@@ -12,6 +12,15 @@ import { createClient } from 'npm:@supabase/supabase-js@2.100.1';
 import { orchestrateBuildSchema } from '../_shared/chunkingOrchestrator.ts';
 import { callClaude } from '../_shared/claudeClient.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  DASHBOARD_BLUEPRINT_SYSTEM_PROMPT,
+  buildDashboardBlueprintUserPrompt,
+  type DataSummaryForPrompt,
+} from '../_shared/prompts/buildDashboardBlueprintPrompt.ts';
+import {
+  validateDashboardBlueprint,
+  countTotalWidgets,
+} from '../_shared/dashboardBlueprintValidator.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
@@ -54,7 +63,30 @@ interface DetectAnomaliesRequest {
   source_file_id?: string;
 }
 
-type AnyRequest = BuildSchemaRequest | IngestDataRequest | DetectAnomaliesRequest;
+interface BuildDashboardBlueprintRequest {
+  mode: 'build_dashboard_blueprint';
+  project_id: string;
+  schema_id: string;
+}
+
+interface RecalculateMetricsRequest {
+  mode: 'recalculate_metrics';
+  project_id: string;
+}
+
+interface GenerateInsightsRequest {
+  mode: 'generate_insights';
+  project_id: string;
+  page_id: string;
+}
+
+type AnyRequest =
+  | BuildSchemaRequest
+  | IngestDataRequest
+  | DetectAnomaliesRequest
+  | BuildDashboardBlueprintRequest
+  | RecalculateMetricsRequest
+  | GenerateInsightsRequest;
 
 function isValidDigest(d: unknown): d is FileDigest {
   if (!d || typeof d !== 'object') return false;
@@ -486,6 +518,203 @@ Si no hay anomalías significativas, devuelve { "anomalies": [] }.`;
   });
 }
 
+async function handleBuildDashboardBlueprint(
+  body: BuildDashboardBlueprintRequest,
+  auth: AuthContext,
+  supabaseUrl: string,
+  serviceKey: string
+): Promise<Response> {
+  const admin = createClient(supabaseUrl, serviceKey);
+  const t0 = Date.now();
+
+  // 1. Ownership
+  const { data: project, error: projErr } = await admin
+    .from('projects')
+    .select('id, user_id')
+    .eq('id', body.project_id)
+    .maybeSingle();
+  if (projErr) return errorResponse(500, 'Error consultando proyecto.', { detail: projErr.message });
+  if (!project || project.user_id !== auth.user_id)
+    return errorResponse(403, 'El proyecto no existe o no te pertenece.');
+
+  // 2. Cargar schema
+  const { data: schema, error: sErr } = await admin
+    .from('business_schemas')
+    .select('id, business_identity, entities, metrics, dimensions')
+    .eq('id', body.schema_id)
+    .eq('project_id', body.project_id)
+    .maybeSingle();
+  if (sErr) return errorResponse(500, 'Error leyendo el schema.', { detail: sErr.message });
+  if (!schema) return errorResponse(404, 'Schema no encontrado en este proyecto.');
+
+  const metrics = (schema.metrics ?? []) as Array<{ id: string; name: string }>;
+  const dimensions = (schema.dimensions ?? []) as Array<{ id: string; name: string }>;
+  const knownMetricIds = new Set(metrics.map((m) => m.id));
+  const knownDimensionIds = new Set(dimensions.map((d) => d.id));
+
+  // 3. data_summary desde time_series_data
+  const { data: tsRows, error: tsErr } = await admin
+    .from('time_series_data')
+    .select('metric_id, period_start, dimension_values')
+    .eq('project_id', body.project_id);
+  if (tsErr) return errorResponse(500, 'Error leyendo histórico.', { detail: tsErr.message });
+
+  const allRows = tsRows ?? [];
+  const dates = allRows.map((r) => r.period_start).filter(Boolean) as string[];
+  dates.sort();
+  const uniqueDates = new Set(dates);
+  const metricsWithData = new Set<string>();
+  const dimsObserved = new Set<string>();
+  for (const r of allRows) {
+    if (r.metric_id) metricsWithData.add(r.metric_id);
+    const dv = (r.dimension_values ?? {}) as Record<string, unknown>;
+    for (const k of Object.keys(dv)) dimsObserved.add(k);
+  }
+
+  const dataSummary: DataSummaryForPrompt = {
+    total_rows: allRows.length,
+    date_range: { start: dates[0] ?? null, end: dates[dates.length - 1] ?? null },
+    metrics_with_data: Array.from(metricsWithData),
+    dimensions_available: Array.from(dimsObserved),
+    has_daily_data: uniqueDates.size >= 14,
+    unique_dates: uniqueDates.size,
+  };
+
+  // 4. Llamar a Opus
+  let claudeResp;
+  try {
+    claudeResp = await callClaude({
+      model: 'opus-4-7',
+      system: DASHBOARD_BLUEPRINT_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: buildDashboardBlueprintUserPrompt({
+            businessSchema: {
+              business_identity: (schema.business_identity ?? {}) as Record<string, unknown>,
+              entities: (schema.entities ?? []) as Array<Record<string, unknown>>,
+              metrics: metrics as unknown as Array<Record<string, unknown>>,
+              dimensions: dimensions as unknown as Array<Record<string, unknown>>,
+            },
+            dataSummary,
+          }),
+        },
+      ],
+      max_tokens: 8000,
+      cache_control: true,
+    });
+  } catch (err) {
+    return errorResponse(502, 'Opus falló diseñando el blueprint.', { detail: (err as Error).message });
+  }
+
+  // 5. Parsear JSON (puede venir con fences ```json)
+  let parsed: Record<string, unknown>;
+  try {
+    const cleaned = claudeResp.text
+      .replace(/^[\s\S]*?(\{)/, '$1')
+      .replace(/```json\s*/i, '')
+      .replace(/```\s*$/, '')
+      .trim();
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    return errorResponse(502, 'Opus devolvió un blueprint que no es JSON válido.', {
+      detail: (err as Error).message,
+      raw: claudeResp.text.slice(0, 500),
+    });
+  }
+
+  // 6. Validar estructura
+  const validation = validateDashboardBlueprint(parsed, knownMetricIds, knownDimensionIds);
+  if (!validation.valid) {
+    return errorResponse(502, 'El blueprint generado tiene errores estructurales.', {
+      validation_errors: validation.errors.slice(0, 20),
+    });
+  }
+
+  const totalWidgets = countTotalWidgets(parsed as Parameters<typeof countTotalWidgets>[0]);
+  const duration = Date.now() - t0;
+
+  // 7. Marcar previos como inactivos
+  await admin
+    .from('dashboard_blueprints')
+    .update({ is_active: false })
+    .eq('project_id', body.project_id)
+    .eq('is_active', true);
+
+  // 8. Determinar siguiente versión
+  const { data: existing } = await admin
+    .from('dashboard_blueprints')
+    .select('version')
+    .eq('project_id', body.project_id)
+    .order('version', { ascending: false })
+    .limit(1);
+  const nextVersion = (existing?.[0]?.version ?? 0) + 1;
+
+  // 9. Insertar
+  const insertRow = {
+    project_id: body.project_id,
+    schema_id: body.schema_id,
+    version: nextVersion,
+    is_active: true,
+    blocks: [],
+    layout: { cols: 12, row_height: 8, margin: [8, 8] },
+    pages: parsed.pages ?? [],
+    layout_strategy: (parsed.layout_strategy as string) ?? null,
+    opus_reasoning: (parsed.opus_reasoning as string) ?? null,
+    sophistication_level: (parsed.sophistication_level as string) ?? null,
+    total_widgets: totalWidgets,
+    model_used: 'claude-opus-4-7',
+    tokens_input: claudeResp.tokens_input,
+    tokens_output: claudeResp.tokens_output,
+    generation_duration_ms: duration,
+  };
+
+  const { data: inserted, error: insErr } = await admin
+    .from('dashboard_blueprints')
+    .insert(insertRow)
+    .select('id')
+    .single();
+  if (insErr || !inserted)
+    return errorResponse(500, 'No se pudo guardar el blueprint.', { detail: insErr?.message });
+
+  return json(200, {
+    blueprint_id: inserted.id,
+    version: nextVersion,
+    sophistication_level: parsed.sophistication_level,
+    total_pages: Array.isArray(parsed.pages) ? parsed.pages.length : 0,
+    total_widgets: totalWidgets,
+    layout_strategy: parsed.layout_strategy,
+    opus_reasoning: parsed.opus_reasoning,
+    pages: parsed.pages,
+    usage: {
+      model: 'claude-opus-4-7',
+      tokens_input: claudeResp.tokens_input,
+      tokens_output: claudeResp.tokens_output,
+      tokens_cached_read: claudeResp.tokens_cached_read ?? 0,
+      tokens_cached_write: claudeResp.tokens_cached_write ?? 0,
+      duration_ms: duration,
+    },
+  });
+}
+
+async function handleRecalculateMetrics(
+  _body: RecalculateMetricsRequest,
+  _auth: AuthContext,
+  _supabaseUrl: string,
+  _serviceKey: string
+): Promise<Response> {
+  return errorResponse(501, 'recalculate_metrics aún no implementado.');
+}
+
+async function handleGenerateInsights(
+  _body: GenerateInsightsRequest,
+  _auth: AuthContext,
+  _supabaseUrl: string,
+  _serviceKey: string
+): Promise<Response> {
+  return errorResponse(501, 'generate_insights aún no implementado.');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -522,6 +751,12 @@ Deno.serve(async (req) => {
       return await handleIngestData(body, auth, supabaseUrl, serviceKey);
     case 'detect_anomalies':
       return await handleDetectAnomalies(body, auth, supabaseUrl, serviceKey);
+    case 'build_dashboard_blueprint':
+      return await handleBuildDashboardBlueprint(body, auth, supabaseUrl, serviceKey);
+    case 'recalculate_metrics':
+      return await handleRecalculateMetrics(body, auth, supabaseUrl, serviceKey);
+    case 'generate_insights':
+      return await handleGenerateInsights(body, auth, supabaseUrl, serviceKey);
     default:
       return errorResponse(400, `Modo no soportado aún: ${(body as { mode: string }).mode}`);
   }
