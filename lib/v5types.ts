@@ -162,16 +162,154 @@ export type DashboardLayout = {
   margin: [number, number];
 };
 
+// ---------- Dashboard Blueprint v2 (Sprint 4 — multi-page) ----------
+// Opus 4.7 decides how many pages a project needs (simple/medium/complex)
+// and emits the full structure as `pages`. Legacy `blocks` + `layout`
+// stay for backward compat with v1 blueprints already in DB.
+
+export type VisualizationType =
+  | 'kpi_hero'
+  | 'kpi_card'
+  | 'line_chart'
+  | 'area_chart'
+  | 'bar_chart'
+  | 'bar_horizontal'
+  | 'bar_stacked'
+  | 'donut_chart'
+  | 'heatmap_grid'
+  | 'heatmap_calendar'
+  | 'scatter_chart'
+  | 'composed_chart'
+  | 'sparkline'
+  | 'gauge'
+  | 'radial_bar'
+  | 'funnel_chart'
+  | 'treemap'
+  | 'sankey'
+  | 'data_table';
+
+export type SectionType = 'hero' | 'kpi_row' | 'chart_grid' | 'insight_card' | 'data_table';
+
+export type ColorScheme = 'navy' | 'coral' | 'orange' | 'mixed';
+
+export type ValueFormat = 'number' | 'currency' | 'percent' | 'date' | 'string';
+
+export type AxisConfig = {
+  field: string;
+  label: string;
+  format: ValueFormat;
+  unit: string | null;
+};
+
+export type ChartConfig = {
+  x_axis: AxisConfig | null;
+  y_axis: AxisConfig | null;
+  color_scheme: ColorScheme;
+  show_legend: boolean;
+  show_grid: boolean;
+  aggregation: 'sum' | 'avg' | 'count' | 'max' | 'min' | null;
+  sort_by: string | null;
+  sort_order: 'asc' | 'desc' | null;
+  limit: number | null;
+  custom: Record<string, unknown>;
+};
+
+export type GridLayout = {
+  columns: number;
+  gap: 'sm' | 'md' | 'lg';
+};
+
+export type GridPosition = {
+  column_span: number;
+  row_span: number;
+};
+
+export type DashboardWidget = {
+  id: string;
+  type: VisualizationType;
+  title: string;
+  subtitle: string | null;
+  metric_ids: string[];
+  dimension_ids: string[];
+  chart_config: ChartConfig;
+  grid_position: GridPosition;
+  insight: string | null;
+  priority: number;
+};
+
+export type DashboardSection = {
+  id: string;
+  type: SectionType;
+  title: string | null;
+  subtitle: string | null;
+  widgets: DashboardWidget[];
+  grid_layout: GridLayout;
+};
+
+export type DashboardPage = {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+  audience: string;
+  priority: number;
+  sections: DashboardSection[];
+};
+
+export type SophisticationLevel = 'simple' | 'medium' | 'complex';
+
 export type DashboardBlueprint = {
   id: string;
   project_id: string;
   schema_id: string;
   version: number;
-  layout: DashboardLayout;
-  blocks: BlueprintBlock[];
+
+  // Legacy v1 (still stored in older rows)
+  layout?: DashboardLayout;
+  blocks?: BlueprintBlock[];
+
+  // v2 (Sprint 4)
+  pages: DashboardPage[];
+  layout_strategy?: string;
+  opus_reasoning?: string;
+  sophistication_level?: SophisticationLevel;
+  total_widgets?: number;
+  model_used?: string;
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  generation_duration_ms?: number | null;
+
   is_active: boolean;
   regenerated_reason?: string;
   created_at: string;
+  updated_at?: string;
+};
+
+// ---------- Metric Calculations Cache (Sprint 4) ----------
+
+export type MetricCalculationPeriod =
+  | 'all_time'
+  | 'last_year'
+  | 'last_quarter'
+  | 'last_month'
+  | 'last_week';
+
+export type MetricCalculationValue = {
+  value: number | null;
+  count: number;
+  change_percent: number | null;
+  change_direction: 'up' | 'down' | 'neutral' | null;
+  breakdown_by_dimension: Record<string, Array<{ key: string; value: number }>>;
+  time_series: Array<{ date: string; value: number }> | null;
+};
+
+export type MetricCalculation = {
+  id: string;
+  project_id: string;
+  metric_id: string;
+  period: MetricCalculationPeriod;
+  value: MetricCalculationValue;
+  calculated_at: string;
 };
 
 // ---------- Time Series (Layer 2: Ingesta Recurrente) ----------

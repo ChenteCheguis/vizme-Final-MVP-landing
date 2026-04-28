@@ -28,7 +28,7 @@ export const businessSchemasRepo = {
       .eq('project_id', projectId)
       .order('version', { ascending: false });
     if (error) throw error;
-    return (data ?? []) as BusinessSchema[];
+    return (data ?? []) as unknown as BusinessSchema[];
   },
 
   async createNewVersion(
@@ -48,6 +48,6 @@ export const businessSchemasRepo = {
       .select()
       .single();
     if (error) throw error;
-    return data as BusinessSchema;
+    return data as unknown as BusinessSchema;
   },
 };

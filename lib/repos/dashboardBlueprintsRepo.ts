@@ -38,12 +38,32 @@ export const dashboardBlueprintsRepo = {
       .eq('project_id', input.project_id)
       .eq('is_active', true);
 
+    // v2 blueprints write into `pages`; legacy NOT NULL columns get safe defaults.
+    const row = {
+      project_id: input.project_id,
+      schema_id: input.schema_id,
+      version: input.version,
+      blocks: (input.blocks ?? []) as unknown as never,
+      layout: (input.layout ?? { cols: 12, row_height: 8, margin: [8, 8] }) as unknown as never,
+      pages: (input.pages ?? []) as unknown as never,
+      layout_strategy: input.layout_strategy ?? null,
+      opus_reasoning: input.opus_reasoning ?? null,
+      sophistication_level: input.sophistication_level ?? null,
+      total_widgets: input.total_widgets ?? 0,
+      model_used: input.model_used ?? 'claude-opus-4-7',
+      tokens_input: input.tokens_input ?? null,
+      tokens_output: input.tokens_output ?? null,
+      generation_duration_ms: input.generation_duration_ms ?? null,
+      regenerated_reason: input.regenerated_reason ?? null,
+      is_active: true,
+    };
+
     const { data, error } = await supabase
       .from('dashboard_blueprints')
-      .insert({ ...input, is_active: true })
+      .insert(row)
       .select()
       .single();
     if (error) throw error;
-    return data as DashboardBlueprint;
+    return data as unknown as DashboardBlueprint;
   },
 };

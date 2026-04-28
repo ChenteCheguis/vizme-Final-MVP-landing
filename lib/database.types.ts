@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       business_schemas: {
@@ -27,8 +52,11 @@ export type Database = {
           metrics: Json
           model_used: string
           project_id: string | null
+          route: string | null
+          steps_executed: Json | null
           tokens_input: number | null
           tokens_output: number | null
+          total_duration_ms: number | null
           updated_at: string | null
           version: number
         }
@@ -44,8 +72,11 @@ export type Database = {
           metrics: Json
           model_used: string
           project_id?: string | null
+          route?: string | null
+          steps_executed?: Json | null
           tokens_input?: number | null
           tokens_output?: number | null
+          total_duration_ms?: number | null
           updated_at?: string | null
           version?: number
         }
@@ -61,8 +92,11 @@ export type Database = {
           metrics?: Json
           model_used?: string
           project_id?: string | null
+          route?: string | null
+          steps_executed?: Json | null
           tokens_input?: number | null
           tokens_output?: number | null
+          total_duration_ms?: number | null
           updated_at?: string | null
           version?: number
         }
@@ -80,34 +114,64 @@ export type Database = {
         Row: {
           blocks: Json
           created_at: string | null
+          generation_duration_ms: number | null
           id: string
           is_active: boolean | null
           layout: Json
+          layout_strategy: string | null
+          model_used: string
+          opus_reasoning: string | null
+          pages: Json
           project_id: string | null
           regenerated_reason: string | null
           schema_id: string | null
+          sophistication_level: string | null
+          tokens_input: number | null
+          tokens_output: number | null
+          total_widgets: number | null
+          updated_at: string | null
           version: number
         }
         Insert: {
           blocks: Json
           created_at?: string | null
+          generation_duration_ms?: number | null
           id?: string
           is_active?: boolean | null
           layout: Json
+          layout_strategy?: string | null
+          model_used?: string
+          opus_reasoning?: string | null
+          pages?: Json
           project_id?: string | null
           regenerated_reason?: string | null
           schema_id?: string | null
+          sophistication_level?: string | null
+          tokens_input?: number | null
+          tokens_output?: number | null
+          total_widgets?: number | null
+          updated_at?: string | null
           version?: number
         }
         Update: {
           blocks?: Json
           created_at?: string | null
+          generation_duration_ms?: number | null
           id?: string
           is_active?: boolean | null
           layout?: Json
+          layout_strategy?: string | null
+          model_used?: string
+          opus_reasoning?: string | null
+          pages?: Json
           project_id?: string | null
           regenerated_reason?: string | null
           schema_id?: string | null
+          sophistication_level?: string | null
+          tokens_input?: number | null
+          tokens_output?: number | null
+          total_widgets?: number | null
+          updated_at?: string | null
           version?: number
         }
         Relationships: [
@@ -296,6 +360,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "insights_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      metric_calculations: {
+        Row: {
+          calculated_at: string | null
+          id: string
+          metric_id: string
+          period: string
+          project_id: string
+          value: Json
+        }
+        Insert: {
+          calculated_at?: string | null
+          id?: string
+          metric_id: string
+          period: string
+          project_id: string
+          value: Json
+        }
+        Update: {
+          calculated_at?: string | null
+          id?: string
+          metric_id?: string
+          period?: string
+          project_id?: string
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metric_calculations_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -599,6 +698,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
