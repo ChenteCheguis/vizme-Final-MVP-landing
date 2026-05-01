@@ -77,4 +77,50 @@
   .text-pretty {
     text-wrap: pretty;
   }
+
+  /* Skeleton placeholder con shimmer suave para los widgets del dashboard */
+  .vizme-skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(2, 34, 47, 0.04) 0%,
+      rgba(2, 34, 47, 0.09) 50%,
+      rgba(2, 34, 47, 0.04) 100%
+    );
+    background-size: 200% 100%;
+    animation: vizme-shimmer 1.4s ease-in-out infinite;
+    border-radius: 0.75rem;
+  }
+  @keyframes vizme-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Calendar heatmap — paleta navy para que combine con el dashboard */
+  .vizme-heatmap .react-calendar-heatmap text {
+    font-size: 6px;
+    fill: #566970;
+  }
+  .vizme-heatmap .react-calendar-heatmap rect {
+    rx: 2;
+    ry: 2;
+  }
+  .vizme-heatmap .color-empty {
+    fill: rgba(2, 34, 47, 0.05);
+  }
+  .vizme-heatmap .color-scale-1 {
+    fill: rgba(245, 74, 67, 0.25);
+  }
+  .vizme-heatmap .color-scale-2 {
+    fill: rgba(245, 74, 67, 0.5);
+  }
+  .vizme-heatmap .color-scale-3 {
+    fill: rgba(245, 74, 67, 0.75);
+  }
+  .vizme-heatmap .color-scale-4 {
+    fill: rgba(245, 74, 67, 1);
+  }
 }

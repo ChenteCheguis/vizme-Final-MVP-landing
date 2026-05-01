@@ -13,6 +13,7 @@ import { Loader2, Sparkles, AlertCircle, RefreshCw, Wand2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useDashboardData } from './useDashboardData';
 import DashboardRenderer from './DashboardRenderer';
+import DashboardSkeleton from './DashboardSkeleton';
 import PeriodPicker from './PeriodPicker';
 import type { MetricCalculationPeriod } from '../../lib/v5types';
 
@@ -100,14 +101,7 @@ export default function DashboardSection({ projectId, schemaId, reloadKey }: Das
   );
 
   if (data.loading) {
-    return (
-      <section className="grid place-items-center rounded-3xl border border-vizme-navy/8 bg-white/60 py-20">
-        <div className="flex items-center gap-3 text-vizme-greyblue">
-          <Loader2 size={18} className="animate-spin text-vizme-coral" />
-          Cargando tu dashboard…
-        </div>
-      </section>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (data.error) {
