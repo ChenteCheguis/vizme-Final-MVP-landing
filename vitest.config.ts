@@ -4,13 +4,20 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['lib/**/__tests__/**/*.test.ts'],
+    include: [
+      'lib/**/__tests__/**/*.test.ts',
+      'supabase/functions/_shared/__tests__/**/*.test.ts',
+    ],
     setupFiles: ['lib/__tests__/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['lib/**/*.ts'],
-      exclude: ['lib/**/__tests__/**', 'lib/database.types.ts'],
+      include: ['lib/**/*.ts', 'supabase/functions/_shared/**/*.ts'],
+      exclude: [
+        'lib/**/__tests__/**',
+        'supabase/functions/_shared/__tests__/**',
+        'lib/database.types.ts',
+      ],
     },
   },
 });
