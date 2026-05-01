@@ -26,6 +26,10 @@ import {
   type MetricMeta,
   type TimeSeriesPoint as MCPoint,
 } from '../_shared/metricCalculator.ts';
+import {
+  GENERATE_INSIGHTS_SYSTEM_PROMPT,
+  buildGenerateInsightsUserPrompt,
+} from '../_shared/prompts/generateInsightsPrompt.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
@@ -799,12 +803,246 @@ async function handleRecalculateMetrics(
 }
 
 async function handleGenerateInsights(
-  _body: GenerateInsightsRequest,
-  _auth: AuthContext,
-  _supabaseUrl: string,
-  _serviceKey: string
+  body: GenerateInsightsRequest,
+  auth: AuthContext,
+  supabaseUrl: string,
+  serviceKey: string
 ): Promise<Response> {
-  return errorResponse(501, 'generate_insights aún no implementado.');
+  const admin = createClient(supabaseUrl, serviceKey);
+  const t0 = Date.now();
+
+  if (!body.page_id || typeof body.page_id !== 'string')
+    return errorResponse(400, 'Falta page_id.');
+
+  // 1. Ownership
+  const { data: project, error: projErr } = await admin
+    .from('projects')
+    .select('id, user_id')
+    .eq('id', body.project_id)
+    .maybeSingle();
+  if (projErr) return errorResponse(500, 'Error consultando proyecto.', { detail: projErr.message });
+  if (!project || project.user_id !== auth.user_id)
+    return errorResponse(403, 'El proyecto no existe o no te pertenece.');
+
+  // 2. Schema activo (último por version)
+  const { data: schemas, error: sErr } = await admin
+    .from('business_schemas')
+    .select('business_identity, metrics')
+    .eq('project_id', body.project_id)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (sErr) return errorResponse(500, 'No pudimos leer el schema.', { detail: sErr.message });
+  const schema = schemas?.[0];
+  if (!schema) return errorResponse(400, 'Este proyecto no tiene schema todavía.');
+
+  const businessIdentity = (schema.business_identity ?? {}) as Record<string, unknown>;
+  const metrics = (schema.metrics ?? []) as Array<{ id: string; name: string }>;
+  const metricNameById = new Map(metrics.map((m) => [m.id, m.name]));
+  const knownMetricIds = new Set(metrics.map((m) => m.id));
+
+  // 3. Blueprint activo (último por version)
+  const { data: blueprints, error: bpErr } = await admin
+    .from('dashboard_blueprints')
+    .select('pages')
+    .eq('project_id', body.project_id)
+    .eq('is_active', true)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (bpErr) return errorResponse(500, 'No pudimos leer el blueprint.', { detail: bpErr.message });
+  const blueprint = blueprints?.[0];
+  if (!blueprint) return errorResponse(400, 'No hay blueprint activo. Genera uno primero.');
+
+  const pages = (blueprint.pages ?? []) as Array<Record<string, unknown>>;
+  const page = pages.find((p) => p && p.id === body.page_id);
+  if (!page) return errorResponse(404, `Página '${body.page_id}' no encontrada en el blueprint.`);
+
+  // 4. Recolectar metric_ids referenciados en la página
+  const referencedMetricIds = new Set<string>();
+  const sections = (page.sections ?? []) as Array<Record<string, unknown>>;
+  for (const s of sections) {
+    const widgets = (s.widgets ?? []) as Array<Record<string, unknown>>;
+    for (const w of widgets) {
+      const ids = (w.metric_ids ?? []) as unknown;
+      if (Array.isArray(ids)) {
+        for (const id of ids) if (typeof id === 'string') referencedMetricIds.add(id);
+      }
+    }
+  }
+  if (referencedMetricIds.size === 0) {
+    return json(200, {
+      insights_created: 0,
+      page_id: body.page_id,
+      message: 'La página no referencia métricas.',
+    });
+  }
+
+  // 5. Cargar metric_calculations (last_month base + all_time para tendencia)
+  const periods = ['last_month', 'all_time'];
+  const { data: calcs, error: cErr } = await admin
+    .from('metric_calculations')
+    .select('metric_id, period, value')
+    .eq('project_id', body.project_id)
+    .in('metric_id', Array.from(referencedMetricIds))
+    .in('period', periods);
+  if (cErr) return errorResponse(500, 'No pudimos leer cálculos.', { detail: cErr.message });
+
+  if (!calcs || calcs.length === 0) {
+    return json(200, {
+      insights_created: 0,
+      page_id: body.page_id,
+      message: 'No hay cálculos guardados. Corre recalculate_metrics primero.',
+    });
+  }
+
+  // 6. Build metrics_summary para Sonnet
+  const metrics_summary = calcs.map((c) => {
+    const v = (c.value ?? {}) as {
+      value?: number | null;
+      change_percent?: number | null;
+      change_direction?: 'up' | 'down' | 'neutral' | null;
+      breakdown_by_dimension?: Record<string, Array<{ key: string; value: number }>>;
+    };
+    let topDim: string | undefined;
+    let topVals: Array<{ key: string; value: number }> | undefined;
+    let bestSize = 0;
+    const bd = v.breakdown_by_dimension ?? {};
+    for (const [dim, arr] of Object.entries(bd)) {
+      if (Array.isArray(arr) && arr.length > bestSize) {
+        bestSize = arr.length;
+        topDim = dim;
+        topVals = arr.slice(0, 5);
+      }
+    }
+    const mid = c.metric_id as string;
+    return {
+      metric_id: mid,
+      metric_name: metricNameById.get(mid) ?? mid,
+      period: c.period as string,
+      value: v.value ?? null,
+      change_percent: v.change_percent ?? null,
+      change_direction: v.change_direction ?? null,
+      top_breakdown_dim: topDim,
+      top_breakdown_values: topVals,
+    };
+  });
+
+  // 7. Llamar a Sonnet 4.6 (acepta temperature)
+  let claudeResp;
+  try {
+    claudeResp = await callClaude({
+      model: 'sonnet-4-6',
+      system: GENERATE_INSIGHTS_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: buildGenerateInsightsUserPrompt({
+            business_identity: businessIdentity,
+            page_title: (page.title as string) ?? body.page_id,
+            page_audience: (page.audience as string) ?? 'dueño',
+            page_description: (page.description as string) ?? '',
+            metrics_summary,
+          }),
+        },
+      ],
+      max_tokens: 4000,
+      temperature: 0.3,
+    });
+  } catch (err) {
+    return errorResponse(502, 'Sonnet falló generando insights.', {
+      detail: (err as Error).message,
+    });
+  }
+
+  // 8. Parsear JSON (puede venir con fences ```json)
+  let parsed: { insights?: Array<Record<string, unknown>> };
+  try {
+    const cleaned = claudeResp.text
+      .replace(/^[\s\S]*?(\{)/, '$1')
+      .replace(/```json\s*/i, '')
+      .replace(/```\s*$/, '')
+      .trim();
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    return errorResponse(502, 'Sonnet devolvió insights no parseables.', {
+      detail: (err as Error).message,
+      raw: claudeResp.text.slice(0, 500),
+    });
+  }
+
+  const insightArr = Array.isArray(parsed.insights) ? parsed.insights : [];
+  const duration = Date.now() - t0;
+
+  if (insightArr.length === 0) {
+    return json(200, {
+      insights_created: 0,
+      page_id: body.page_id,
+      duration_ms: duration,
+      usage: {
+        model: 'claude-sonnet-4-6',
+        tokens_input: claudeResp.tokens_input,
+        tokens_output: claudeResp.tokens_output,
+      },
+      message: 'Sonnet no encontró insights útiles para esta página.',
+    });
+  }
+
+  // 9. Validar + persistir
+  const VALID_TYPES = new Set(['opportunity', 'risk', 'trend', 'anomaly']);
+  const rows = insightArr
+    .filter((i) => i && typeof i === 'object')
+    .map((i) => {
+      const type =
+        typeof i.type === 'string' && VALID_TYPES.has(i.type) ? (i.type as string) : 'trend';
+      const title = typeof i.title === 'string' ? i.title.slice(0, 200) : 'Insight';
+      const content = typeof i.narrative === 'string' ? i.narrative : '';
+      const refs = Array.isArray(i.metric_references)
+        ? (i.metric_references as unknown[]).filter(
+            (r): r is string => typeof r === 'string' && knownMetricIds.has(r)
+          )
+        : [];
+      const priority =
+        typeof i.priority === 'number' && i.priority >= 1 && i.priority <= 5
+          ? Math.round(i.priority)
+          : 3;
+      return {
+        project_id: body.project_id,
+        type,
+        title,
+        content,
+        page_id: body.page_id,
+        metric_references: refs as unknown as Record<string, unknown>,
+        priority,
+        model_used: 'claude-sonnet-4-6',
+      };
+    })
+    .filter((r) => r.content.length > 0);
+
+  if (rows.length === 0) {
+    return json(200, {
+      insights_created: 0,
+      page_id: body.page_id,
+      duration_ms: duration,
+      message: 'Insights filtrados por validación, ninguno sobrevivió.',
+    });
+  }
+
+  const { data: inserted, error: insErr } = await admin
+    .from('insights')
+    .insert(rows)
+    .select('id, type, title, priority, page_id, metric_references, content');
+  if (insErr) return errorResponse(500, 'Error guardando insights.', { detail: insErr.message });
+
+  return json(200, {
+    insights_created: inserted?.length ?? 0,
+    page_id: body.page_id,
+    insights: inserted ?? [],
+    duration_ms: duration,
+    usage: {
+      model: 'claude-sonnet-4-6',
+      tokens_input: claudeResp.tokens_input,
+      tokens_output: claudeResp.tokens_output,
+    },
+  });
 }
 
 Deno.serve(async (req) => {
