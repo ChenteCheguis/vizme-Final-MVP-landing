@@ -328,7 +328,14 @@ export type TimeSeriesPoint = {
 
 // ---------- Insights (Layer 4: Inteligencia) ----------
 
-export type InsightType = 'weekly' | 'monthly' | 'alert' | 'anomaly';
+export type InsightType =
+  | 'weekly'
+  | 'monthly'
+  | 'alert'
+  | 'anomaly'
+  | 'opportunity'
+  | 'risk'
+  | 'trend';
 
 export type Insight = {
   id: string;
@@ -337,10 +344,12 @@ export type Insight = {
   title: string;
   content: string;
   data_snapshot?: Json;
-  model_used?: 'opus-4-7' | 'sonnet-4-6' | 'haiku-4-5';
+  model_used?: string;
   generated_at: string;
   read_at?: string;
   priority: number;
+  page_id?: string | null;
+  metric_references?: string[];
 };
 
 // ---------- External Data Cache ----------

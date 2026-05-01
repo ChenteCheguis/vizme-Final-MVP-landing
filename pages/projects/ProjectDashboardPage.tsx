@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import SummaryCard from '../../components/wizard/SummaryCard';
 import IngestModal from '../../components/ingest/IngestModal';
+import DashboardSection from '../../components/dashboard/DashboardSection';
 import type { BusinessSchema, Project } from '../../lib/v5types';
 import type { AnalysisSummary } from '../../lib/onboardingState';
 
@@ -295,21 +296,16 @@ export default function ProjectDashboardPage() {
         )}
       </section>
 
-      {/* Dashboard blocks placeholder — FASE 5+ */}
-      <section>
-        <div className="rounded-3xl border border-dashed border-vizme-navy/15 bg-gradient-to-br from-white/70 to-vizme-bg/40 p-10 text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-vizme-coral/10 text-vizme-coral">
-            <Activity size={22} />
-          </div>
-          <p className="mt-5 font-display text-2xl font-light tracking-editorial text-vizme-navy">
-            Tu dashboard en vivo llega en el siguiente sprint.
-          </p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-vizme-greyblue text-pretty">
-            Por ahora, sube datos nuevos para alimentar tu serie histórica — Haiku revisará
-            cada upload contra el patrón habitual y te avisará si hay anomalías.
-          </p>
-        </div>
-      </section>
+      {/* Dashboard editorial multi-página */}
+      {id && (
+        <section>
+          <DashboardSection
+            projectId={id}
+            schemaId={schema?.id}
+            reloadKey={reloadKey}
+          />
+        </section>
+      )}
 
       {/* Ingest modal */}
       {schema && id && (
