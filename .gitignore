@@ -37,3 +37,7 @@ supabase/migrations/v5/_fix_*.sql
 
 .claude/
 Vizme_v5_Documento_Maestro.pdf
+
+# Real customer data — never commit
+scripts/fixtures/Ventas_PIX_*.csv
+scripts/fixtures/INV_*.xlsx
