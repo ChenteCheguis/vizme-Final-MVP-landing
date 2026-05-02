@@ -15,6 +15,11 @@ import Step2Context from '../../components/wizard/Step2Context';
 import Step3Upload from '../../components/wizard/Step3Upload';
 import Step4Review from '../../components/wizard/Step4Review';
 import type { BusinessSchema } from '../../lib/v5types';
+import {
+  runFullDashboardSetup,
+  type SetupStage,
+  type FullSetupResult,
+} from '../../lib/hooks/useFullDashboardSetup';
 
 const CHUNKING_THRESHOLD_TOKENS = 25_000;
 
@@ -179,9 +184,41 @@ export default function OnboardingPage() {
         {state.currentStep === 4 && (
           <Step4Review
             state={state}
-            onSeeDashboard={() => state.projectId && navigate(`/projects/${state.projectId}`)}
+            onBuildDashboard={async (onProgress: (s: SetupStage) => void) => {
+              if (
+                !state.projectId ||
+                !state.fileId ||
+                !state.schemaId ||
+                !state.file ||
+                !state.schema
+              ) {
+                return {
+                  success: false,
+                  failedStep: 'ingesting',
+                  error:
+                    'Falta información del proyecto. Reintenta el upload.',
+                } as FullSetupResult;
+              }
+              return runFullDashboardSetup({
+                projectId: state.projectId,
+                fileId: state.fileId,
+                schemaId: state.schemaId,
+                file: state.file,
+                schema: state.schema,
+                onProgress: (stage) => onProgress(stage),
+              });
+            }}
+            onComplete={() => {
+              if (state.projectId) {
+                navigate(`/projects/${state.projectId}/dashboard`);
+              }
+            }}
+            onSkipToDashboard={() => {
+              if (state.projectId) {
+                navigate(`/projects/${state.projectId}/dashboard`);
+              }
+            }}
             onCorrect={() => {
-              // Sprint 3 placeholder — visual link, modal not yet implemented.
               alert('La edición manual del schema llega en el siguiente sprint.');
             }}
             onRetry={() => {
