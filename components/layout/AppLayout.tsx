@@ -9,6 +9,8 @@ export default function AppLayout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const isOnboarding = location.pathname.startsWith('/onboarding');
+  const isProjectDetail = /^\/projects\/[^/]+/.test(location.pathname);
+  const hideGlobalSidebar = isOnboarding || isProjectDetail;
 
   const fullName = (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? 'Tú';
   const initials = fullName.split(' ').slice(0, 2).map((p) => p[0]?.toUpperCase()).join('') || 'V';
@@ -83,8 +85,8 @@ export default function AppLayout() {
 
         {/* Body: sidebar + content */}
         <div className="mx-auto flex w-full max-w-[1400px] flex-1 px-6">
-          {/* Sidebar (hidden on onboarding to give wizard full breathing room) */}
-          {!isOnboarding && (
+          {/* Sidebar (hidden on onboarding + project detail; ProjectLayout owns its own sidebar) */}
+          {!hideGlobalSidebar && (
             <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-56 shrink-0 flex-col py-8 pr-6 lg:flex">
               <p className="label-eyebrow px-3">Mi espacio</p>
               <nav className="mt-3 flex flex-col gap-1">
