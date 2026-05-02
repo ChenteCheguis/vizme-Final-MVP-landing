@@ -21,8 +21,10 @@ import { stdin as input, stdout as output } from 'node:process';
 import { performance } from 'node:perf_hooks';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { buildFileDigest, type FileDigest } from '../lib/fileDigest';
+import { runIngestExtraction } from '../lib/ingestEngine';
+import type { BusinessSchema } from '../lib/v5types';
 
-type Mode = 'schema' | 'dashboard' | 'metrics' | 'insights';
+type Mode = 'schema' | 'dashboard' | 'metrics' | 'insights' | 'full-setup';
 
 type Args = {
   mode: Mode;
@@ -43,8 +45,8 @@ function parseArgs(argv: string[]): Args {
     const next = argv[i + 1];
     if (flag === '--mode') {
       const m = next as Mode;
-      if (!['schema', 'dashboard', 'metrics', 'insights'].includes(m)) {
-        console.error(`❌ Modo inválido: ${m}. Usa schema | dashboard | metrics | insights.`);
+      if (!['schema', 'dashboard', 'metrics', 'insights', 'full-setup'].includes(m)) {
+        console.error(`❌ Modo inválido: ${m}. Usa schema | dashboard | metrics | insights | full-setup.`);
         process.exit(1);
       }
       out.mode = m;
@@ -77,6 +79,11 @@ function parseArgs(argv: string[]): Args {
     console.error('❌ schema mode requiere --file <path> (o usa --cleanup). Ejemplos:');
     console.error('   npm run test:analyze -- --file ./data/ventas.xlsx');
     console.error('   npm run test:analyze -- --cleanup');
+    process.exit(1);
+  }
+  if (out.mode === 'full-setup' && !out.file) {
+    console.error('❌ full-setup mode requiere --file <path>. Ejemplo:');
+    console.error('   npm run test:analyze -- --mode full-setup --file ./data/ventas.xlsx');
     process.exit(1);
   }
   if (out.mode === 'dashboard' && (!out.schemaId || !out.projectId)) {
@@ -491,6 +498,202 @@ async function runEdgeMode(
   }
 }
 
+async function runFullSetup(
+  args: Args,
+  url: string,
+  anonKey: string,
+  serviceKey: string,
+  email: string,
+  password: string
+): Promise<void> {
+  const filePath = resolve(process.cwd(), args.file!);
+  let fileBytes: Buffer;
+  try {
+    fileBytes = await readFile(filePath);
+  } catch (err) {
+    console.error(`❌ No pude leer el archivo: ${filePath}`);
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+
+  console.log('\n🚀 Vizme — full-setup (schema → ingest → metrics → blueprint → insights)');
+  console.log(`📄 Archivo: ${filePath} (${(fileBytes.length / 1024).toFixed(1)} KB)`);
+  if (args.hint) console.log(`💡 Hint: ${args.hint}`);
+  if (args.question) console.log(`❓ Question: ${args.question}`);
+
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const userId = await ensureTestUser(admin, email, password);
+  console.log(`👤 Test user: ${email} (${userId})`);
+  const jwt = await signInUser(url, anonKey, email, password);
+  const projectId = await ensureTestProject(admin, userId);
+  const uploaded = await uploadFile(admin, userId, filePath, fileBytes);
+  const fileId = await insertFileRecord(admin, {
+    projectId,
+    storagePath: uploaded.storagePath,
+    fileName: uploaded.fileName,
+    fileSize: fileBytes.length,
+  });
+
+  // ── 1. build_schema ──────────────────────────────────────
+  console.log('\n[1/5] 🧬 Construyendo schema...');
+  const t1 = performance.now();
+  const digest = await buildFileDigest({ buffer: fileBytes, file_name: uploaded.fileName });
+  const schemaResp = await invokeEdgeFunction({
+    supabaseUrl: url,
+    jwt,
+    projectId,
+    fileId,
+    digest,
+    hint: args.hint,
+    question: args.question,
+  });
+  if (schemaResp.status !== 200) {
+    console.error(`❌ build_schema falló (${schemaResp.status}):`);
+    console.error(JSON.stringify(schemaResp.body, null, 2));
+    process.exit(2);
+  }
+  const schemaBody = schemaResp.body as { schema_id: string; version: number };
+  const schemaId = schemaBody.schema_id;
+  console.log(`     ✅ schema_id=${schemaId} en ${((performance.now() - t1) / 1000).toFixed(1)}s`);
+
+  // ── 2. ingest_data (extracción local + envío) ────────────
+  console.log('\n[2/5] 📥 Extrayendo y enviando time_series...');
+  const t2 = performance.now();
+  const persistedSchema = (await fetchPersistedSchema(admin, schemaId)) as BusinessSchema;
+  const ingestRun = runIngestExtraction({
+    buffer: fileBytes,
+    fileName: uploaded.fileName,
+    schema: persistedSchema,
+  });
+  console.log(
+    `     ⚙  extracciones: ${ingestRun.extractions.length} | data_points: ${ingestRun.summary.total_data_points}`
+  );
+  if (ingestRun.summary.total_data_points === 0) {
+    console.error('❌ La extracción no produjo data points. ¿El schema corresponde al archivo?');
+    process.exit(2);
+  }
+  const ingestRes = await fetch(`${url}/functions/v1/analyze-data`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${jwt}`,
+      apikey: anonKey,
+    },
+    body: JSON.stringify({
+      mode: 'ingest_data',
+      project_id: projectId,
+      file_id: fileId,
+      extractions: ingestRun.extractions,
+    }),
+  });
+  const ingestJson = (await ingestRes.json()) as Record<string, unknown>;
+  if (!ingestRes.ok) {
+    console.error(`❌ ingest_data falló (${ingestRes.status}):`);
+    console.error(JSON.stringify(ingestJson, null, 2));
+    process.exit(2);
+  }
+  console.log(
+    `     ✅ inserted=${ingestJson.inserted ?? 0} en ${((performance.now() - t2) / 1000).toFixed(1)}s`
+  );
+
+  // ── 3. recalculate_metrics ───────────────────────────────
+  console.log('\n[3/5] 📊 Recalculando métricas...');
+  const t3 = performance.now();
+  const metricsRes = await fetch(`${url}/functions/v1/analyze-data`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${jwt}`,
+      apikey: anonKey,
+    },
+    body: JSON.stringify({ mode: 'recalculate_metrics', project_id: projectId }),
+  });
+  const metricsJson = (await metricsRes.json()) as Record<string, unknown>;
+  if (!metricsRes.ok) {
+    console.error(`❌ recalculate_metrics falló (${metricsRes.status}):`);
+    console.error(JSON.stringify(metricsJson, null, 2));
+    process.exit(2);
+  }
+  console.log(
+    `     ✅ metrics_calculated=${metricsJson.metrics_calculated ?? 0} en ${((performance.now() - t3) / 1000).toFixed(1)}s`
+  );
+
+  // ── 4. build_dashboard_blueprint ─────────────────────────
+  console.log('\n[4/5] 🎨 Diseñando dashboard...');
+  const t4 = performance.now();
+  const blueprintRes = await fetch(`${url}/functions/v1/analyze-data`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${jwt}`,
+      apikey: anonKey,
+    },
+    body: JSON.stringify({
+      mode: 'build_dashboard_blueprint',
+      project_id: projectId,
+      schema_id: schemaId,
+    }),
+  });
+  const blueprintJson = (await blueprintRes.json()) as {
+    blueprint_id?: string;
+    pages?: Array<{ id: string; title: string }>;
+    total_widgets?: number;
+    sophistication_level?: string;
+  };
+  if (!blueprintRes.ok) {
+    console.error(`❌ build_dashboard_blueprint falló (${blueprintRes.status}):`);
+    console.error(JSON.stringify(blueprintJson, null, 2));
+    process.exit(2);
+  }
+  const pages = blueprintJson.pages ?? [];
+  console.log(
+    `     ✅ blueprint=${blueprintJson.blueprint_id} | pages=${pages.length} | widgets=${blueprintJson.total_widgets} | sophistication=${blueprintJson.sophistication_level} en ${((performance.now() - t4) / 1000).toFixed(1)}s`
+  );
+
+  // ── 5. generate_insights por página (paralelo) ───────────
+  console.log('\n[5/5] ✨ Escribiendo insights...');
+  const t5 = performance.now();
+  const insightResults = await Promise.all(
+    pages.map(async (page) => {
+      const r = await fetch(`${url}/functions/v1/analyze-data`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${jwt}`,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({
+          mode: 'generate_insights',
+          project_id: projectId,
+          page_id: page.id,
+        }),
+      });
+      const j = (await r.json()) as Record<string, unknown>;
+      return { ok: r.ok, page, json: j };
+    })
+  );
+  const insightsOk = insightResults.filter((r) => r.ok).length;
+  const insightsFail = insightResults.length - insightsOk;
+  console.log(
+    `     ${insightsFail === 0 ? '✅' : '⚠️ '} insights_ok=${insightsOk} insights_fail=${insightsFail} en ${((performance.now() - t5) / 1000).toFixed(1)}s`
+  );
+
+  // Final summary
+  console.log('\n══════════════════════════════════════════════');
+  console.log('🎉 FULL-SETUP COMPLETO');
+  console.log('══════════════════════════════════════════════');
+  console.log(`   project_id:  ${projectId}`);
+  console.log(`   schema_id:   ${schemaId}`);
+  console.log(`   blueprint:   ${blueprintJson.blueprint_id}`);
+  console.log(`   pages:       ${pages.length}`);
+  console.log(`   widgets:     ${blueprintJson.total_widgets}`);
+  console.log(`   insights:    ${insightsOk}/${insightResults.length}`);
+
+  await cleanupIfConfirmed(admin, { projectId, fileId, storagePath: uploaded.storagePath });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const env = await loadEnv();
@@ -507,6 +710,11 @@ async function main() {
 
   if (args.cleanup) {
     await runCleanup(admin0, email, args.deleteUser ?? false);
+    return;
+  }
+
+  if (args.mode === 'full-setup') {
+    await runFullSetup(args, url, anonKey, serviceKey, email, password);
     return;
   }
 
