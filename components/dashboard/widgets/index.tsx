@@ -1,7 +1,3 @@
-// Dispatcher: dado el widget.type, renderiza el componente correcto.
-// Si Opus pidió un tipo que no existe (no debería pasar por el validador),
-// caemos a un placeholder explícito en vez de romper la página.
-
 import type { VisualizationType } from '../../../lib/v5types';
 import type { WidgetRenderProps } from './widgetTypes';
 import { WidgetShell, EmptyWidget } from './WidgetShell';
@@ -56,7 +52,7 @@ export function DashboardWidgetView(props: WidgetRenderProps) {
   if (!Component) {
     return (
       <WidgetShell title={props.widget.title} insight={props.widget.insight}>
-        <EmptyWidget message={`Tipo de visualización desconocido: ${props.widget.type}`} />
+        <EmptyWidget message="Esta vista todavía está en preparación." />
       </WidgetShell>
     );
   }

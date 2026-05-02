@@ -1,7 +1,3 @@
-// Widgets especializados: scatter_chart, gauge, radial_bar, funnel_chart,
-// heatmap_grid, sankey. Sankey/heatmap_grid son fallbacks elegantes a un
-// listado de barras hasta el sprint 4.5 que agrega breakdown bidimensional.
-
 import {
   ScatterChart,
   Scatter,
@@ -157,21 +153,97 @@ export function FunnelChartWidget({ widget, calcs }: WidgetRenderProps) {
   );
 }
 
-export function HeatmapGridWidget({ widget, calcs }: WidgetRenderProps) {
-  // En este sprint no calculamos breakdown bidimensional. Fallback: lista
-  // ordenada de los top valores de la primera dimensión.
-  const metricId = widget.metric_ids[0];
-  const calc = metricId ? calcs[metricId] : undefined;
-  const dimId = widget.dimension_ids[0];
-  const bd = calc?.value.breakdown_by_dimension ?? {};
-  const target = (dimId ? bd[dimId] : undefined) ?? Object.values(bd)[0] ?? [];
+export function HeatmapGridWidget({ widget, calcs, metrics }: WidgetRenderProps) {
   const colors = getColorScheme(widget.chart_config.color_scheme);
-  if (target.length === 0)
+  const dimId = widget.dimension_ids[0];
+
+  const series = widget.metric_ids
+    .map((mid) => {
+      const calc = calcs[mid];
+      const bd = calc?.value.breakdown_by_dimension ?? {};
+      const target = (dimId ? bd[dimId] : undefined) ?? Object.values(bd)[0] ?? [];
+      return {
+        metricId: mid,
+        name: metrics[mid]?.name ?? mid,
+        breakdown: target,
+      };
+    })
+    .filter((s) => s.breakdown.length > 0);
+
+  if (series.length === 0) {
     return (
       <WidgetShell title={widget.title} subtitle={widget.subtitle} insight={widget.insight}>
-        <EmptyWidget message="Heatmap bidimensional disponible en el próximo sprint." />
+        <EmptyWidget message="Aún no hay categorías con suficientes datos para construir el mapa." />
       </WidgetShell>
     );
+  }
+
+  if (series.length >= 2) {
+    const categoryTotals = new Map<string, number>();
+    for (const s of series) {
+      for (const b of s.breakdown) {
+        categoryTotals.set(b.key, (categoryTotals.get(b.key) ?? 0) + b.value);
+      }
+    }
+    const rows = Array.from(categoryTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([key]) => key);
+    const maxByMetric = new Map(
+      series.map((s) => [s.metricId, Math.max(...s.breakdown.map((b) => b.value), 1)])
+    );
+
+    return (
+      <WidgetShell title={widget.title} subtitle={widget.subtitle} insight={widget.insight}>
+        <div className="overflow-x-auto">
+          <table className="w-full border-separate border-spacing-1 text-xs">
+            <thead>
+              <tr>
+                <th className="text-left text-[10px] font-medium uppercase tracking-[0.16em] text-vizme-greyblue" />
+                {series.map((s) => (
+                  <th
+                    key={s.metricId}
+                    className="px-2 py-1 text-left text-[10px] font-medium uppercase tracking-[0.16em] text-vizme-greyblue"
+                  >
+                    {s.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((cat) => (
+                <tr key={cat}>
+                  <th className="pr-3 text-right text-[11px] font-medium text-vizme-navy">
+                    {cat}
+                  </th>
+                  {series.map((s) => {
+                    const point = s.breakdown.find((b) => b.key === cat);
+                    const v = point?.value ?? 0;
+                    const ratio = v / (maxByMetric.get(s.metricId) ?? 1);
+                    return (
+                      <td
+                        key={s.metricId}
+                        className="rounded-lg px-3 py-2 text-center font-mono"
+                        style={{
+                          background: colors.primary,
+                          opacity: v === 0 ? 0.05 : 0.2 + ratio * 0.8,
+                          color: ratio > 0.5 ? '#fff' : '#1e2a44',
+                        }}
+                      >
+                        {v === 0 ? '—' : formatCompactNumber(v)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  const target = series[0].breakdown;
   const max = Math.max(...target.map((t) => t.value));
   return (
     <WidgetShell title={widget.title} subtitle={widget.subtitle} insight={widget.insight}>

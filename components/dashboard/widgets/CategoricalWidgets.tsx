@@ -1,5 +1,3 @@
-// Widgets categóricos: bar_chart, bar_horizontal, bar_stacked, donut_chart, treemap.
-
 import {
   BarChart,
   Bar,
@@ -97,17 +95,52 @@ export function BarHorizontalWidget({ widget, calcs }: WidgetRenderProps) {
   );
 }
 
-export function BarStackedWidget({ widget, calcs }: WidgetRenderProps) {
-  // En este sprint no calculamos breakdown bidimensional (dim x time).
-  // Renderizamos como barras simples si hay breakdown disponible.
-  const data = pickBreakdown(widget, calcs);
+export function BarStackedWidget({ widget, calcs, metrics }: WidgetRenderProps) {
   const colors = getColorScheme(widget.chart_config.color_scheme);
-  if (data.length === 0)
+  const dimId = widget.dimension_ids[0];
+  const limit = widget.chart_config.limit ?? 8;
+
+  const series = widget.metric_ids
+    .map((mid) => {
+      const calc = calcs[mid];
+      const bd = calc?.value.breakdown_by_dimension ?? {};
+      const target = (dimId ? bd[dimId] : undefined) ?? Object.values(bd)[0] ?? [];
+      return {
+        metricId: mid,
+        name: metrics[mid]?.name ?? mid,
+        breakdown: target,
+      };
+    })
+    .filter((s) => s.breakdown.length > 0);
+
+  if (series.length === 0) {
     return (
       <WidgetShell title={widget.title} subtitle={widget.subtitle} insight={widget.insight}>
-        <EmptyWidget message="Las barras apiladas requieren breakdown bidimensional (próximo sprint)." />
+        <EmptyWidget message="Necesitamos al menos una categoría con datos para componer las barras." />
       </WidgetShell>
     );
+  }
+
+  const categoryTotals = new Map<string, number>();
+  for (const s of series) {
+    for (const b of s.breakdown) {
+      categoryTotals.set(b.key, (categoryTotals.get(b.key) ?? 0) + b.value);
+    }
+  }
+  const topCategories = Array.from(categoryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key]) => key);
+
+  const data = topCategories.map((cat) => {
+    const row: Record<string, string | number> = { name: cat };
+    for (const s of series) {
+      const point = s.breakdown.find((b) => b.key === cat);
+      row[s.metricId] = point?.value ?? 0;
+    }
+    return row;
+  });
+
   return (
     <WidgetShell title={widget.title} subtitle={widget.subtitle} insight={widget.insight}>
       <div className="h-72 w-full">
@@ -115,9 +148,22 @@ export function BarStackedWidget({ widget, calcs }: WidgetRenderProps) {
           <BarChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} />
-            <YAxis tickFormatter={(v) => formatCompactNumber(v)} tick={{ fontSize: 11, fill: '#6b7280' }} />
+            <YAxis
+              tickFormatter={(v) => formatCompactNumber(v)}
+              tick={{ fontSize: 11, fill: '#6b7280' }}
+            />
             <Tooltip />
-            <Bar dataKey="value" fill={colors.primary} radius={[6, 6, 0, 0]} />
+            {(widget.chart_config.show_legend ?? series.length > 1) && <Legend />}
+            {series.map((s, i) => (
+              <Bar
+                key={s.metricId}
+                dataKey={s.metricId}
+                stackId="vizme-stack"
+                fill={colors.palette[i % colors.palette.length]}
+                name={s.name}
+                radius={i === series.length - 1 ? [6, 6, 0, 0] : 0}
+              />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
