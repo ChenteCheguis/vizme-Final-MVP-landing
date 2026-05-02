@@ -54,24 +54,33 @@ export default function ProjectLayout() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id || !user) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data, error: pErr } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const [projRes, bpRes] = await Promise.all([
+        supabase.from('projects').select('*').eq('id', id).single(),
+        supabase
+          .from('dashboard_blueprints')
+          .select('health_status')
+          .eq('project_id', id)
+          .eq('is_active', true)
+          .order('version', { ascending: false })
+          .limit(1),
+      ]);
       if (cancelled) return;
-      if (pErr || !data) {
+      if (projRes.error || !projRes.data) {
         setError('No encontramos este proyecto.');
         setLoading(false);
         return;
       }
-      setProject(data as unknown as Project);
+      setProject(projRes.data as unknown as Project);
+      setHealthStatus(
+        (bpRes.data?.[0]?.health_status as string | undefined) ?? null
+      );
       setLoading(false);
     })();
     return () => {
@@ -137,6 +146,7 @@ export default function ProjectLayout() {
         <nav className="-mx-2 flex flex-col gap-0.5">
           {PROJECT_MENU.map((item) => {
             const Icon = item.icon;
+            const isDashboard = item.to === 'dashboard';
             return (
               <NavLink
                 key={item.to}
@@ -152,7 +162,12 @@ export default function ProjectLayout() {
               >
                 <Icon size={18} className="mt-0.5 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium leading-tight">{item.label}</div>
+                  <div className="flex items-center gap-1.5 text-sm font-medium leading-tight">
+                    {item.label}
+                    {isDashboard && healthStatus && (
+                      <HealthDot status={healthStatus} />
+                    )}
+                  </div>
                   <div className="mt-0.5 text-[11px] leading-snug opacity-70">
                     {item.description}
                   </div>
@@ -177,6 +192,24 @@ export default function ProjectLayout() {
         <Outlet context={{ project }} />
       </main>
     </div>
+  );
+}
+
+function HealthDot({ status }: { status: string }) {
+  const map: Record<string, { color: string; title: string }> = {
+    complete: { color: 'bg-emerald-500', title: 'Dashboard completo' },
+    partial: { color: 'bg-amber-500', title: 'Datos parciales' },
+    limited: { color: 'bg-orange-500', title: 'Datos limitados' },
+    no_data: { color: 'bg-rose-500', title: 'Sin datos' },
+  };
+  const cfg = map[status];
+  if (!cfg) return null;
+  return (
+    <span
+      className={['h-2 w-2 shrink-0 rounded-full', cfg.color].join(' ')}
+      title={cfg.title}
+      aria-label={cfg.title}
+    />
   );
 }
 

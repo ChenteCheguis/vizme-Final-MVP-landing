@@ -283,6 +283,18 @@ export type DashboardBlueprint = {
   regenerated_reason?: string;
   created_at: string;
   updated_at?: string;
+
+  // Health (Sprint 4.2)
+  health_status?: 'complete' | 'partial' | 'limited' | 'no_data' | null;
+  health_details?: {
+    extracted: number;
+    total: number;
+    percent: number;
+    missing_metric_ids: string[];
+    missing_metric_names: string[];
+    reasons: string[];
+  } | null;
+  last_calculated_at?: string | null;
 };
 
 // ---------- Metric Calculations Cache (Sprint 4) ----------

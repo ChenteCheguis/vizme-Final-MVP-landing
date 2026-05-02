@@ -12,9 +12,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Sparkles, AlertCircle, RefreshCw, Wand2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useDashboardData } from './useDashboardData';
+import { useRetryExtraction } from '../../lib/hooks/useRetryExtraction';
 import DashboardRenderer from './DashboardRenderer';
 import DashboardSkeleton from './DashboardSkeleton';
 import PeriodPicker from './PeriodPicker';
+import DashboardHealthBanner from './DashboardHealthBanner';
+import DashboardDiagnosticsModal from './DashboardDiagnosticsModal';
 import type { MetricCalculationPeriod } from '../../lib/v5types';
 
 interface DashboardSectionProps {
@@ -45,9 +48,21 @@ async function callEdge<T = unknown>(body: Record<string, unknown>): Promise<T> 
 
 export default function DashboardSection({ projectId, schemaId, reloadKey }: DashboardSectionProps) {
   const data = useDashboardData(projectId);
+  const retry = useRetryExtraction(projectId);
   const [period, setPeriod] = useState<MetricCalculationPeriod>('last_month');
   const [busy, setBusy] = useState<null | 'blueprint' | 'recalc' | 'insights'>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+
+  const handleRetry = useCallback(async () => {
+    setActionError(null);
+    const r = await retry.retry();
+    if (!r.success) {
+      setActionError(r.error ?? 'No pudimos reintentar.');
+      return;
+    }
+    data.reload();
+  }, [retry, data]);
 
   useEffect(() => {
     if (reloadKey !== undefined) data.reload();
@@ -145,6 +160,83 @@ export default function DashboardSection({ projectId, schemaId, reloadKey }: Das
     );
   }
 
+  // health derivado del blueprint (Sprint 4.2). Si todavía no se ha calculado
+  // (proyectos viejos antes de migration 14), inferimos desde hasCalcs.
+  const health = data.blueprint.health_status
+    ? {
+        status: data.blueprint.health_status,
+        details: data.blueprint.health_details ?? {
+          extracted: 0,
+          total: data.metricsById.size,
+          percent: 0,
+          missing_metric_ids: [],
+          missing_metric_names: [],
+          reasons: [],
+        },
+      }
+    : data.hasCalcs
+    ? null // legacy: assume complete, hide banner
+    : {
+        status: 'no_data' as const,
+        details: {
+          extracted: 0,
+          total: data.metricsById.size,
+          percent: 0,
+          missing_metric_ids: [],
+          missing_metric_names: Array.from(data.metricsById.values()).map((m) => m.name),
+          reasons: ['Aún no se han calculado las métricas.'],
+        },
+      };
+
+  // Ghost dashboard cuando health=no_data: blueprint existe pero no hay datos
+  if (health?.status === 'no_data') {
+    return (
+      <div className="space-y-6">
+        <DashboardHealthBanner
+          health={health}
+          onRetry={handleRetry}
+          onShowDiagnostics={() => setDiagnosticsOpen(true)}
+          retrying={retry.busy}
+        />
+        <section className="relative overflow-hidden rounded-3xl border border-dashed border-vizme-navy/15 bg-white/40 p-10 text-center">
+          {/* Ghost cards detrás del mensaje */}
+          <div className="pointer-events-none absolute inset-0 grid grid-cols-3 gap-3 p-6 opacity-30">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-24 rounded-2xl bg-vizme-navy/5" />
+            ))}
+          </div>
+          <div className="relative">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-vizme-coral/10 text-vizme-coral">
+              <Sparkles size={22} />
+            </div>
+            <p className="mt-5 font-display text-2xl font-light tracking-editorial text-vizme-navy">
+              Tu dashboard está esperando datos.
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-vizme-greyblue text-pretty">
+              El diseño está listo, pero no encontramos columnas que correspondan a tus métricas.
+              Reintenta la extracción o sube un archivo distinto desde la pestaña Archivos.
+            </p>
+            {actionError && <p className="mt-3 text-xs text-rose-600">{actionError}</p>}
+            <button
+              type="button"
+              onClick={() => setDiagnosticsOpen(true)}
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-vizme-navy px-6 py-3 text-sm text-white transition-all hover:-translate-y-0.5 hover:bg-vizme-coral"
+            >
+              Ver diagnóstico
+            </button>
+          </div>
+        </section>
+        <DashboardDiagnosticsModal
+          open={diagnosticsOpen}
+          onClose={() => setDiagnosticsOpen(false)}
+          health={health}
+          onRetry={handleRetry}
+          retrying={retry.busy}
+        />
+      </div>
+    );
+  }
+
   if (!data.hasCalcs) {
     return (
       <section className="rounded-3xl border border-vizme-coral/20 bg-vizme-coral/5 p-10 text-center">
@@ -215,6 +307,15 @@ export default function DashboardSection({ projectId, schemaId, reloadKey }: Das
         </div>
       )}
 
+      {health && health.status !== 'complete' && (
+        <DashboardHealthBanner
+          health={health}
+          onRetry={handleRetry}
+          onShowDiagnostics={() => setDiagnosticsOpen(true)}
+          retrying={retry.busy}
+        />
+      )}
+
       <DashboardRenderer
         blueprint={data.blueprint}
         metricsById={data.metricsById}
@@ -224,6 +325,16 @@ export default function DashboardSection({ projectId, schemaId, reloadKey }: Das
         onRequestInsights={generateInsights}
         insightsLoading={busy === 'insights'}
       />
+
+      {health && (
+        <DashboardDiagnosticsModal
+          open={diagnosticsOpen}
+          onClose={() => setDiagnosticsOpen(false)}
+          health={health}
+          onRetry={handleRetry}
+          retrying={retry.busy}
+        />
+      )}
     </div>
   );
 }

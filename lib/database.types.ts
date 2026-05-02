@@ -115,8 +115,11 @@ export type Database = {
           blocks: Json
           created_at: string | null
           generation_duration_ms: number | null
+          health_details: Json | null
+          health_status: string | null
           id: string
           is_active: boolean | null
+          last_calculated_at: string | null
           layout: Json
           layout_strategy: string | null
           model_used: string
@@ -136,8 +139,11 @@ export type Database = {
           blocks: Json
           created_at?: string | null
           generation_duration_ms?: number | null
+          health_details?: Json | null
+          health_status?: string | null
           id?: string
           is_active?: boolean | null
+          last_calculated_at?: string | null
           layout: Json
           layout_strategy?: string | null
           model_used?: string
@@ -157,8 +163,11 @@ export type Database = {
           blocks?: Json
           created_at?: string | null
           generation_duration_ms?: number | null
+          health_details?: Json | null
+          health_status?: string | null
           id?: string
           is_active?: boolean | null
+          last_calculated_at?: string | null
           layout?: Json
           layout_strategy?: string | null
           model_used?: string

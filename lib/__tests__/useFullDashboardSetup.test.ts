@@ -126,12 +126,41 @@ describe('runFullDashboardSetup', () => {
     expect(invokeMock).toHaveBeenCalledTimes(5);
   });
 
-  it('reporta failedStep="calculating" si recalculate_metrics falla', async () => {
+  it('Sprint 4.2: recalculate_metrics fallido NO bloquea (continúa al blueprint)', async () => {
     invokeMock
       .mockResolvedValueOnce({ data: { inserted: 50 }, error: null })
       .mockResolvedValueOnce({
         data: null,
         error: { message: 'DB connection lost' },
+      })
+      .mockResolvedValueOnce({
+        data: { blueprint_id: 'bp1', pages: [{ id: 'p1' }] },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: { insights_created: 2 }, error: null });
+
+    const result = await runFullDashboardSetup({
+      projectId: 'proj1',
+      fileId: 'file1',
+      schemaId: 'schema1',
+      file: baseFile,
+      schema: baseSchema,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.blueprintId).toBe('bp1');
+    expect(result.warnings?.[0]?.stage).toBe('calculating');
+    expect(result.warnings?.[0]?.message).toContain('DB connection lost');
+    expect(invokeMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('Sprint 4.2: SOLO blueprint failure bloquea (failedStep="designing")', async () => {
+    invokeMock
+      .mockResolvedValueOnce({ data: { inserted: 50 }, error: null })
+      .mockResolvedValueOnce({ data: { metrics_calculated: 5 }, error: null })
+      .mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Opus rate limited' },
       });
 
     const result = await runFullDashboardSetup({
@@ -143,10 +172,8 @@ describe('runFullDashboardSetup', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.failedStep).toBe('calculating');
-    expect(result.error).toContain('DB connection lost');
-    // No debió llamar a build_dashboard_blueprint
-    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(result.failedStep).toBe('designing');
+    expect(result.error).toContain('Opus rate limited');
   });
 
   it('insights fallidos no bloquean el dashboard (success=true)', async () => {

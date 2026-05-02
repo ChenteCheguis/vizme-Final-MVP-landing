@@ -40,6 +40,8 @@ export interface FullSetupResult {
   blueprintId?: string;
   failedStep?: SetupStage;
   error?: string;
+  // Sprint 4.2 — non-blocking failures (we continued anyway)
+  warnings?: Array<{ stage: SetupStage; message: string }>;
   stats?: {
     insertedRows: number;
     metricsCalculated: number;
@@ -84,10 +86,14 @@ export async function runFullDashboardSetup(
 
   let insertedRows = 0;
   let metricsCalculated = 0;
+  const warnings: Array<{ stage: SetupStage; message: string }> = [];
 
-  // ── Paso 1: ingest_data ───────────────────────────────
+  // ── Paso 1: ingest_data (TOLERANTE) ───────────────────
+  // Sprint 4.2: even if extraction yields 0 rows, we continue —
+  // the dashboard will render with health=no_data and the user
+  // can retry from the banner.
   onProgress?.('ingesting', STAGE_MESSAGES.ingesting);
-  let extractions;
+  let extractions: Awaited<ReturnType<typeof runIngestExtraction>>['extractions'] = [];
   try {
     const buffer = await file.arrayBuffer();
     const ingestResult = runIngestExtraction({
@@ -96,56 +102,50 @@ export async function runFullDashboardSetup(
       schema,
     });
     extractions = ingestResult.extractions;
-    if (
-      !extractions ||
-      extractions.length === 0 ||
-      ingestResult.summary.total_data_points === 0
-    ) {
-      return {
-        success: false,
-        failedStep: 'ingesting',
-        error:
-          'No pudimos extraer datos de tu archivo. Revisa que las columnas coincidan con tu schema.',
-      };
+    if (!extractions || extractions.length === 0 || ingestResult.summary.total_data_points === 0) {
+      warnings.push({
+        stage: 'ingesting',
+        message:
+          'No pudimos extraer datos de tu archivo. El dashboard se construirá vacío y podrás reintentar.',
+      });
     }
   } catch (err) {
-    return {
-      success: false,
-      failedStep: 'ingesting',
-      error: `No pudimos leer tu archivo. ${(err as Error).message}`,
-    };
+    warnings.push({
+      stage: 'ingesting',
+      message: `No pudimos leer tu archivo: ${(err as Error).message}`,
+    });
   }
 
-  const ingestResp = await invokeAnalyzeData<{ inserted: number }>({
-    mode: 'ingest_data',
-    project_id: projectId,
-    file_id: fileId,
-    extractions,
-  });
-  if (ingestResp.error) {
-    return { success: false, failedStep: 'ingesting', error: ingestResp.error };
-  }
-  insertedRows = ingestResp.data?.inserted ?? 0;
-  if (insertedRows === 0) {
-    return {
-      success: false,
-      failedStep: 'ingesting',
-      error: 'Tu archivo no produjo datos numéricos utilizables.',
-    };
+  if (extractions.length > 0) {
+    const ingestResp = await invokeAnalyzeData<{ inserted: number }>({
+      mode: 'ingest_data',
+      project_id: projectId,
+      file_id: fileId,
+      extractions,
+    });
+    if (ingestResp.error) {
+      warnings.push({ stage: 'ingesting', message: ingestResp.error });
+    } else {
+      insertedRows = ingestResp.data?.inserted ?? 0;
+    }
   }
 
-  // ── Paso 2: recalculate_metrics ───────────────────────
+  // ── Paso 2: recalculate_metrics (TOLERANTE) ──────────
   onProgress?.('calculating', STAGE_MESSAGES.calculating);
   const calcResp = await invokeAnalyzeData<{ metrics_calculated: number }>({
     mode: 'recalculate_metrics',
     project_id: projectId,
   });
   if (calcResp.error) {
-    return { success: false, failedStep: 'calculating', error: calcResp.error };
+    warnings.push({ stage: 'calculating', message: calcResp.error });
+  } else {
+    metricsCalculated = calcResp.data?.metrics_calculated ?? 0;
   }
-  metricsCalculated = calcResp.data?.metrics_calculated ?? 0;
 
-  // ── Paso 3: build_dashboard_blueprint ─────────────────
+  // ── Paso 3: build_dashboard_blueprint (HARD FAIL) ────
+  // Sin blueprint no hay nada que renderizar. Este es el ÚNICO
+  // paso que detiene el flujo (además del schema, que se hace
+  // antes de invocar este hook).
   onProgress?.('designing', STAGE_MESSAGES.designing);
   const blueprintResp = await invokeAnalyzeData<{
     blueprint_id: string;
@@ -160,6 +160,7 @@ export async function runFullDashboardSetup(
       success: false,
       failedStep: 'designing',
       error: blueprintResp.error,
+      warnings,
     };
   }
   const blueprintId = blueprintResp.data?.blueprint_id;
@@ -193,6 +194,7 @@ export async function runFullDashboardSetup(
   return {
     success: true,
     blueprintId,
+    warnings: warnings.length > 0 ? warnings : undefined,
     stats: {
       insertedRows,
       metricsCalculated,
