@@ -30,6 +30,7 @@ import {
   GENERATE_INSIGHTS_SYSTEM_PROMPT,
   buildGenerateInsightsUserPrompt,
 } from '../_shared/prompts/generateInsightsPrompt.ts';
+import { calculateDashboardHealth } from '../_shared/dashboardHealth.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
 declare const Deno: { env: { get: (k: string) => string | undefined }; serve: (h: (req: Request) => Response | Promise<Response>) => void };
@@ -89,13 +90,19 @@ interface GenerateInsightsRequest {
   page_id: string;
 }
 
+interface RefreshHealthRequest {
+  mode: 'refresh_health';
+  project_id: string;
+}
+
 type AnyRequest =
   | BuildSchemaRequest
   | IngestDataRequest
   | DetectAnomaliesRequest
   | BuildDashboardBlueprintRequest
   | RecalculateMetricsRequest
-  | GenerateInsightsRequest;
+  | GenerateInsightsRequest
+  | RefreshHealthRequest;
 
 function isValidDigest(d: unknown): d is FileDigest {
   if (!d || typeof d !== 'object') return false;
@@ -794,11 +801,120 @@ async function handleRecalculateMetrics(
     written += count ?? slice.length;
   }
 
+  // Health auto-refresh: best-effort (does NOT block the recalc response)
+  let health_status: string | null = null;
+  let health_percent: number | null = null;
+  try {
+    const healthResult = await refreshHealthForProject({
+      admin,
+      project_id: body.project_id,
+      metrics: metrics.map((m) => ({ id: m.id, name: m.name })),
+    });
+    health_status = healthResult?.status ?? null;
+    health_percent = healthResult?.details.percent ?? null;
+  } catch (_e) {
+    // swallow — health is non-critical for recalc
+  }
+
   return json(200, {
     metrics_calculated: metrics.length,
     rows_upserted: written,
     duration_ms: Date.now() - t0,
     needs_recalculation: false,
+    health_status,
+    health_percent,
+  });
+}
+
+async function refreshHealthForProject({
+  admin,
+  project_id,
+  metrics,
+}: {
+  admin: ReturnType<typeof createClient>;
+  project_id: string;
+  metrics: Array<{ id: string; name: string }>;
+}) {
+  // Read latest metric_calculations for this project
+  const { data: calcs, error: cErr } = await admin
+    .from('metric_calculations')
+    .select('metric_id, value, calculated_at')
+    .eq('project_id', project_id);
+  if (cErr) return null;
+
+  // Group by metric_id; data_points = the union across periods (any period
+  // with a value counts the metric as extracted).
+  const byMetric = new Map<string, { metric_id: string; data_points: unknown[]; warnings: string[] }>();
+  for (const c of calcs ?? []) {
+    const id = c.metric_id as string;
+    if (!byMetric.has(id)) byMetric.set(id, { metric_id: id, data_points: [], warnings: [] });
+    const v = c.value as Record<string, unknown> | null;
+    // metric_calculations.value is a JSONB blob; "extracted" iff it has any
+    // numeric current/previous/sample value.
+    if (v && (v.current != null || v.value != null || (Array.isArray(v.points) && v.points.length > 0))) {
+      byMetric.get(id)!.data_points.push(v);
+    }
+  }
+
+  const calculations = metrics.map((m) => byMetric.get(m.id) ?? { metric_id: m.id, data_points: [], warnings: [] });
+  const health = calculateDashboardHealth({ metrics, calculations });
+
+  // Write to active blueprint (if any)
+  await admin
+    .from('dashboard_blueprints')
+    .update({
+      health_status: health.status,
+      health_details: health.details as unknown as Record<string, unknown>,
+      last_calculated_at: health.last_calculated_at,
+    })
+    .eq('project_id', project_id)
+    .eq('is_active', true);
+
+  return health;
+}
+
+async function handleRefreshHealth(
+  body: RefreshHealthRequest,
+  auth: AuthContext,
+  supabaseUrl: string,
+  serviceKey: string
+): Promise<Response> {
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  const { data: project, error: projErr } = await admin
+    .from('projects')
+    .select('id, user_id')
+    .eq('id', body.project_id)
+    .maybeSingle();
+  if (projErr) return errorResponse(500, 'Error consultando proyecto.', { detail: projErr.message });
+  if (!project || project.user_id !== auth.user_id)
+    return errorResponse(403, 'El proyecto no existe o no te pertenece.');
+
+  const { data: schemas, error: sErr } = await admin
+    .from('business_schemas')
+    .select('metrics')
+    .eq('project_id', body.project_id)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (sErr) return errorResponse(500, 'No pudimos leer el schema.', { detail: sErr.message });
+  const schema = schemas?.[0];
+  if (!schema) return errorResponse(400, 'Este proyecto no tiene schema todavía.');
+
+  const metrics = ((schema.metrics ?? []) as Array<{ id: string; name: string }>)
+    .filter((m) => m && typeof m.id === 'string');
+
+  const health = await refreshHealthForProject({
+    admin,
+    project_id: body.project_id,
+    metrics,
+  });
+
+  if (!health) return errorResponse(500, 'No pudimos calcular el health del dashboard.');
+
+  return json(200, {
+    health_status: health.status,
+    health_details: health.details,
+    last_calculated_at: health.last_calculated_at,
   });
 }
 
@@ -1087,6 +1203,8 @@ Deno.serve(async (req) => {
       return await handleRecalculateMetrics(body, auth, supabaseUrl, serviceKey);
     case 'generate_insights':
       return await handleGenerateInsights(body, auth, supabaseUrl, serviceKey);
+    case 'refresh_health':
+      return await handleRefreshHealth(body, auth, supabaseUrl, serviceKey);
     default:
       return errorResponse(400, `Modo no soportado aún: ${(body as { mode: string }).mode}`);
   }
