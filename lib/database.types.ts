@@ -525,6 +525,7 @@ export type Database = {
       time_series_data: {
         Row: {
           created_at: string | null
+          count_source_rows: number
           dimension_values: Json | null
           id: string
           metric_id: string
@@ -536,6 +537,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          count_source_rows?: number
           dimension_values?: Json | null
           id?: string
           metric_id: string
@@ -547,6 +549,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          count_source_rows?: number
           dimension_values?: Json | null
           id?: string
           metric_id?: string

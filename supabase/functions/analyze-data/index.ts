@@ -30,6 +30,7 @@ import {
   GENERATE_INSIGHTS_SYSTEM_PROMPT,
   buildGenerateInsightsUserPrompt,
 } from '../_shared/prompts/generateInsightsPrompt.ts';
+import { validateInsight, type ValidatorMetric } from '../_shared/insightValidator.ts';
 import { calculateDashboardHealth } from '../_shared/dashboardHealth.ts';
 import type { FileDigest } from '../_shared/types.ts';
 
@@ -56,6 +57,7 @@ interface IngestExtractionPayload {
     period_start: string;
     period_end?: string;
     value: number;
+    count_source_rows?: number;
     dimension_values: Record<string, string>;
   }>;
 }
@@ -332,11 +334,16 @@ async function handleIngestData(
     for (const p of ex.data_points) {
       if (typeof p.value !== 'number' || !Number.isFinite(p.value)) continue;
       if (!p.period_start || typeof p.period_start !== 'string') continue;
+      const cs =
+        typeof p.count_source_rows === 'number' && Number.isFinite(p.count_source_rows) && p.count_source_rows > 0
+          ? Math.floor(p.count_source_rows)
+          : 1;
       rows.push({
         project_id: body.project_id,
         metric_id: ex.metric_id,
         dimension_values: p.dimension_values ?? {},
         value: p.value,
+        count_source_rows: cs,
         period_start: p.period_start,
         period_end: p.period_end ?? null,
         source_file_id: body.file_id,
@@ -750,13 +757,14 @@ async function handleRecalculateMetrics(
   // Time series points
   const { data: tsRows, error: tsErr } = await admin
     .from('time_series_data')
-    .select('metric_id, value, period_start, dimension_values')
+    .select('metric_id, value, count_source_rows, period_start, dimension_values')
     .eq('project_id', body.project_id);
   if (tsErr) return errorResponse(500, 'Error leyendo histórico.', { detail: tsErr.message });
 
   const points: MCPoint[] = (tsRows ?? []).map((r) => ({
     metric_id: r.metric_id as string,
     value: Number(r.value),
+    count_source_rows: Number(r.count_source_rows ?? 1),
     period_start: r.period_start as string,
     dimension_values: (r.dimension_values ?? null) as Record<string, unknown> | null,
   }));
@@ -1102,20 +1110,34 @@ async function handleGenerateInsights(
     });
   }
 
-  // 9. Validar + persistir
+  // 9. Validar (anti-alucinación Sprint 4.3) + persistir
   const VALID_TYPES = new Set(['opportunity', 'risk', 'trend', 'anomaly']);
+  const validatorMetrics: ValidatorMetric[] = metrics_summary.map((m) => ({
+    metric_id: m.metric_id,
+    period: m.period,
+    value: m.value,
+    change_percent: m.change_percent,
+  }));
+  const rejectedInsights: Array<{ title: string; errors: string[] }> = [];
   const rows = insightArr
     .filter((i) => i && typeof i === 'object')
     .map((i) => {
       const type =
         typeof i.type === 'string' && VALID_TYPES.has(i.type) ? (i.type as string) : 'trend';
       const title = typeof i.title === 'string' ? i.title.slice(0, 200) : 'Insight';
-      const content = typeof i.narrative === 'string' ? i.narrative : '';
+      const rawNarrative = typeof i.narrative === 'string' ? i.narrative : '';
       const refs = Array.isArray(i.metric_references)
         ? (i.metric_references as unknown[]).filter(
             (r): r is string => typeof r === 'string' && knownMetricIds.has(r)
           )
         : [];
+
+      const validation = validateInsight(rawNarrative, refs, validatorMetrics);
+      if (!validation.valid) {
+        rejectedInsights.push({ title, errors: validation.errors });
+        return null;
+      }
+
       const priority =
         typeof i.priority === 'number' && i.priority >= 1 && i.priority <= 5
           ? Math.round(i.priority)
@@ -1124,21 +1146,22 @@ async function handleGenerateInsights(
         project_id: body.project_id,
         type,
         title,
-        content,
+        content: validation.cleaned,
         page_id: body.page_id,
         metric_references: refs as unknown as Record<string, unknown>,
         priority,
         model_used: 'claude-sonnet-4-6',
       };
     })
-    .filter((r) => r.content.length > 0);
+    .filter((r): r is NonNullable<typeof r> => r !== null && r.content.length > 0);
 
   if (rows.length === 0) {
     return json(200, {
       insights_created: 0,
       page_id: body.page_id,
       duration_ms: duration,
-      message: 'Insights filtrados por validación, ninguno sobrevivió.',
+      rejected: rejectedInsights,
+      message: 'Insights filtrados por validación anti-alucinación, ninguno sobrevivió.',
     });
   }
 
@@ -1152,6 +1175,7 @@ async function handleGenerateInsights(
     insights_created: inserted?.length ?? 0,
     page_id: body.page_id,
     insights: inserted ?? [],
+    rejected: rejectedInsights,
     duration_ms: duration,
     usage: {
       model: 'claude-sonnet-4-6',

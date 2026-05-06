@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:analyze": "tsx scripts/test-analyze.ts",
+    "validate:pix": "tsx scripts/validate-pix-metrics.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

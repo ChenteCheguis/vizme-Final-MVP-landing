@@ -30,6 +30,14 @@ export type Entity = {
   }>;
 };
 
+export type MetricFilterOp = '=' | '!=' | 'in' | 'not_in';
+
+export type MetricFilter = {
+  field: string;
+  op: MetricFilterOp;
+  value: string | number | Array<string | number>;
+};
+
 export type Metric = {
   id: string;
   name: string;
@@ -40,6 +48,10 @@ export type Metric = {
   format: 'currency' | 'number' | 'percent' | 'duration';
   good_direction: 'up' | 'down';
   expected_range?: { min: number; max: number };
+  // Sprint 4.3: optional pre-aggregation filter, e.g.
+  //   { field: 'CANCELADO', op: '=', value: 'FALSO' }
+  // applied to source rows before bucketing in ingestEngine.
+  filter?: MetricFilter;
 };
 
 export type Dimension = {

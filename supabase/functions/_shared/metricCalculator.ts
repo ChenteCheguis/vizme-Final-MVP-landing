@@ -1,18 +1,20 @@
 // ============================================================
-// VIZME V5 — Calculadora de métricas (Sprint 4)
+// VIZME V5 — Calculadora de métricas
+// Sprint 4.3 — Correctness fix using count_source_rows
 //
-// Pure-JS aggregation sobre time_series_data. NO usa LLM.
-// Agrupa por (metric_id, period) y produce el shape que el
-// dashboard renderea: value, count, change_percent vs período
-// anterior, time_series para sparklines, breakdown por
-// dimensión (top 10).
+// Each TimeSeriesPoint represents a PRE-AGGREGATED bucket:
+//   value             = the aggregated value for that bucket
+//   count_source_rows = how many original CSV rows produced it
 //
-// Períodos soportados:
-//   all_time      → todo lo cargado
-//   last_year     → últimos 365 días
-//   last_quarter  → últimos 90 días
-//   last_month    → últimos 30 días
-//   last_week     → últimos 7 días
+// Period-level aggregation rules (Sprint 4.3 fix):
+//   sum   → Σ value                                  (unchanged)
+//   count → Σ value             ← was values.length  (FIX)
+//   avg   → Σ(value × cs) / Σ cs ← was mean(values)  (FIX)
+//   min   → min(value)                               (unchanged)
+//   max   → max(value)                               (unchanged)
+//
+// Without count_source_rows (legacy rows = default 1) the avg falls
+// back to a simple mean, which is what the old code did.
 // ============================================================
 
 export type Period = 'all_time' | 'last_year' | 'last_quarter' | 'last_month' | 'last_week';
@@ -20,6 +22,7 @@ export type Period = 'all_time' | 'last_year' | 'last_quarter' | 'last_month' | 
 export interface TimeSeriesPoint {
   metric_id: string;
   value: number;
+  count_source_rows?: number; // optional for backward compatibility
   period_start: string;
   dimension_values: Record<string, unknown> | null;
 }
@@ -33,11 +36,15 @@ export interface MetricMeta {
 
 export interface CalculatedValue {
   value: number | null;
-  count: number;
+  // Sprint 4.3 — `source_rows` = total source rows behind `value`.
+  // `data_points` = number of TimeSeriesPoints aggregated.
+  // Old code only had `count` and confused the two.
+  source_rows: number;
+  data_points: number;
   change_percent: number | null;
   change_direction: 'up' | 'down' | 'neutral' | null;
-  breakdown_by_dimension: Record<string, Array<{ key: string; value: number }>>;
-  time_series: Array<{ date: string; value: number }> | null;
+  breakdown_by_dimension: Record<string, Array<{ key: string; value: number; source_rows: number }>>;
+  time_series: Array<{ date: string; value: number; source_rows: number }> | null;
 }
 
 export const PERIODS: Period[] = ['all_time', 'last_year', 'last_quarter', 'last_month', 'last_week'];
@@ -50,22 +57,39 @@ const PERIOD_DAYS: Record<Period, number | null> = {
   last_week: 7,
 };
 
+function srcRows(p: TimeSeriesPoint): number {
+  const n = Number(p.count_source_rows);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 function aggregate(points: TimeSeriesPoint[], how: MetricMeta['aggregation']): number | null {
   if (points.length === 0) return null;
-  const values = points.map((p) => Number(p.value)).filter((v) => Number.isFinite(v));
-  if (values.length === 0) return null;
+  const numeric = points
+    .map((p) => ({ v: Number(p.value), cs: srcRows(p) }))
+    .filter((p) => Number.isFinite(p.v));
+  if (numeric.length === 0) return null;
+
   switch (how) {
     case 'sum':
-      return values.reduce((a, b) => a + b, 0);
+      return numeric.reduce((a, p) => a + p.v, 0);
     case 'count':
-      return values.length;
+      // FIX 4.3: each point's `value` already represents a daily count
+      // (because ingestEngine ran aggregate(rows, 'count') per day).
+      // Period count = sum of those daily counts.
+      return numeric.reduce((a, p) => a + p.v, 0);
     case 'avg':
-    case 'ratio':
-      return values.reduce((a, b) => a + b, 0) / values.length;
+    case 'ratio': {
+      // FIX 4.3: weighted average using count_source_rows so that a
+      // day with 100 tickets contributes 100x more than a day with 1.
+      const numerator = numeric.reduce((a, p) => a + p.v * p.cs, 0);
+      const denominator = numeric.reduce((a, p) => a + p.cs, 0);
+      if (denominator === 0) return null;
+      return numerator / denominator;
+    }
     case 'min':
-      return Math.min(...values);
+      return Math.min(...numeric.map((p) => p.v));
     case 'max':
-      return Math.max(...values);
+      return Math.max(...numeric.map((p) => p.v));
   }
 }
 
@@ -107,38 +131,49 @@ function direction(
   return good === 'down' ? 'up' : 'down';
 }
 
+function aggregateBucket(
+  rows: Array<{ v: number; cs: number }>,
+  how: MetricMeta['aggregation']
+): number {
+  switch (how) {
+    case 'sum':
+    case 'count':
+      return rows.reduce((a, p) => a + p.v, 0);
+    case 'min':
+      return Math.min(...rows.map((p) => p.v));
+    case 'max':
+      return Math.max(...rows.map((p) => p.v));
+    case 'avg':
+    case 'ratio':
+    default: {
+      const numerator = rows.reduce((a, p) => a + p.v * p.cs, 0);
+      const denominator = rows.reduce((a, p) => a + p.cs, 0);
+      return denominator === 0 ? 0 : numerator / denominator;
+    }
+  }
+}
+
 function buildTimeSeries(
   points: TimeSeriesPoint[],
   how: MetricMeta['aggregation']
-): Array<{ date: string; value: number }> {
+): Array<{ date: string; value: number; source_rows: number }> {
   // Group by date (yyyy-mm-dd), aggregate within day.
-  const byDay = new Map<string, number[]>();
+  const byDay = new Map<string, Array<{ v: number; cs: number }>>();
   for (const p of points) {
     const d = (p.period_start ?? '').slice(0, 10);
     if (!d) continue;
     if (!byDay.has(d)) byDay.set(d, []);
-    byDay.get(d)!.push(Number(p.value));
+    byDay.get(d)!.push({ v: Number(p.value), cs: srcRows(p) });
   }
-  const out: Array<{ date: string; value: number }> = [];
+  const out: Array<{ date: string; value: number; source_rows: number }> = [];
   for (const [date, vals] of byDay.entries()) {
-    const filtered = vals.filter(Number.isFinite);
+    const filtered = vals.filter((p) => Number.isFinite(p.v));
     if (filtered.length === 0) continue;
-    let v: number;
-    switch (how) {
-      case 'sum':
-      case 'count':
-        v = filtered.reduce((a, b) => a + b, 0);
-        break;
-      case 'min':
-        v = Math.min(...filtered);
-        break;
-      case 'max':
-        v = Math.max(...filtered);
-        break;
-      default:
-        v = filtered.reduce((a, b) => a + b, 0) / filtered.length;
-    }
-    out.push({ date, value: v });
+    out.push({
+      date,
+      value: aggregateBucket(filtered, how),
+      source_rows: filtered.reduce((a, p) => a + p.cs, 0),
+    });
   }
   out.sort((a, b) => a.date.localeCompare(b.date));
   return out;
@@ -147,8 +182,8 @@ function buildTimeSeries(
 function buildBreakdown(
   points: TimeSeriesPoint[],
   how: MetricMeta['aggregation']
-): Record<string, Array<{ key: string; value: number }>> {
-  const byDim = new Map<string, Map<string, number[]>>();
+): Record<string, Array<{ key: string; value: number; source_rows: number }>> {
+  const byDim = new Map<string, Map<string, Array<{ v: number; cs: number }>>>();
   for (const p of points) {
     const dvs = (p.dimension_values ?? {}) as Record<string, unknown>;
     for (const [dim, val] of Object.entries(dvs)) {
@@ -157,31 +192,20 @@ function buildBreakdown(
       if (!byDim.has(dim)) byDim.set(dim, new Map());
       const map = byDim.get(dim)!;
       if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(Number(p.value));
+      map.get(key)!.push({ v: Number(p.value), cs: srcRows(p) });
     }
   }
-  const out: Record<string, Array<{ key: string; value: number }>> = {};
+  const out: Record<string, Array<{ key: string; value: number; source_rows: number }>> = {};
   for (const [dim, keyMap] of byDim.entries()) {
-    const arr: Array<{ key: string; value: number }> = [];
+    const arr: Array<{ key: string; value: number; source_rows: number }> = [];
     for (const [key, vals] of keyMap.entries()) {
-      const filtered = vals.filter(Number.isFinite);
+      const filtered = vals.filter((p) => Number.isFinite(p.v));
       if (filtered.length === 0) continue;
-      let v: number;
-      switch (how) {
-        case 'sum':
-        case 'count':
-          v = filtered.reduce((a, b) => a + b, 0);
-          break;
-        case 'min':
-          v = Math.min(...filtered);
-          break;
-        case 'max':
-          v = Math.max(...filtered);
-          break;
-        default:
-          v = filtered.reduce((a, b) => a + b, 0) / filtered.length;
-      }
-      arr.push({ key, value: v });
+      arr.push({
+        key,
+        value: aggregateBucket(filtered, how),
+        source_rows: filtered.reduce((a, p) => a + p.cs, 0),
+      });
     }
     arr.sort((a, b) => b.value - a.value);
     out[dim] = arr.slice(0, 10);
@@ -212,10 +236,12 @@ export function calculateMetric(
     period === 'all_time' || period === 'last_year' ? buildTimeSeries(window, meta.aggregation) : null;
 
   const breakdown = buildBreakdown(window, meta.aggregation);
+  const sourceRows = window.reduce((a, p) => a + srcRows(p), 0);
 
   return {
     value,
-    count: window.length,
+    source_rows: sourceRows,
+    data_points: window.length,
     change_percent: changePercent,
     change_direction: changeDir,
     breakdown_by_dimension: breakdown,

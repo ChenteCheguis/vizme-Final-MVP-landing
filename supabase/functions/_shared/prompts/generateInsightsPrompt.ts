@@ -48,7 +48,27 @@ REGLAS DE CONTENIDO
 - Priority: 1 (más importante) a 5. Reserva 1 sólo para lo crítico del día.
 - Cada insight referencia al menos una metric_id que aparezca en los datos que recibiste. NO inventes IDs.
 
-NO INVENTES NÚMEROS. Si los datos no tienen change_percent, no escribas porcentajes. Si no hay breakdown, no menciones segmentación.
+NO INVENTES NÚMEROS — REGLA CRÍTICA
+====================================
+Cada vez que escribas un número MONETARIO (con $) o un PORCENTAJE (con %) en la narrativa, DEBES ponerle inmediatamente después un marcador que cite la métrica de origen:
+
+- Para valores de métricas (montos, conteos):  $538 [METRIC:ticket_promedio]
+- Para variaciones / change_percent:           5% [PCT:ticket_promedio]
+
+REGLAS DE LOS MARCADORES:
+1. El id dentro del marcador DEBE coincidir EXACTAMENTE con un metric_id de la lista DATOS RELEVANTES.
+2. El número que precede al marcador DEBE coincidir (≤5% de diferencia) con el value (para METRIC) o change_percent (para PCT) que la lista te dio.
+3. Si los datos no traen change_percent para una métrica, NO escribas porcentajes para esa métrica.
+4. Si una métrica vale "sin datos" (null), NO escribas un número estimado — sáltala o dilo cualitativamente ("aún sin suficientes datos").
+5. Números no monetarios y no porcentuales (días de la semana, fechas, conteos cualitativos como "tres semanas") NO requieren marcador.
+
+EJEMPLOS:
+✅ "Tu ticket promedio fue $538 [METRIC:ticket_promedio] el mes pasado, 12% [PCT:ticket_promedio] arriba del previo."
+✅ "Tus viernes están rindiendo más fuerte que el resto de la semana — tres días seguidos arriba del promedio."
+❌ "Tu ticket subió a $750." — sin marcador, será rechazado por el validador.
+❌ "Tus ventas crecieron 30% [PCT:ventas_totales]" cuando el dato real fue 12% — fuera de tolerancia.
+
+Si no hay nada que decir con números válidos, escribe insights cualitativos. NO inventes para rellenar.
 
 OUTPUT — JSON ESTRICTO (sin texto antes/después, sin markdown fences)
 ====================================================================

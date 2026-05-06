@@ -24,7 +24,8 @@ describe('calculateMetric — agregaciones básicas', () => {
     const pts = [day('2026-04-01', 100), day('2026-04-15', 200), day('2026-04-30', 300)];
     const r = calculateMetric(sumMeta, pts, 'last_month', new Date('2026-04-30').getTime());
     expect(r.value).toBe(600);
-    expect(r.count).toBe(3);
+    expect(r.data_points).toBe(3);
+    expect(r.source_rows).toBe(3); // default 1 each
   });
 
   it('promedia con avg', () => {
@@ -37,14 +38,34 @@ describe('calculateMetric — agregaciones básicas', () => {
     const pts = [day('2025-01-01', 100)];
     const r = calculateMetric(sumMeta, pts, 'last_week', new Date('2026-04-30').getTime());
     expect(r.value).toBeNull();
-    expect(r.count).toBe(0);
+    expect(r.data_points).toBe(0);
+    expect(r.source_rows).toBe(0);
   });
 
-  it('count agrega contando registros', () => {
+  it('count suma counts diarios (no cuenta el # de filas TS)', () => {
+    // ingestEngine almacena daily counts en `value`. count(period) = sum(values).
     const meta: MetricMeta = { id: 'tx', name: 'Transacciones', aggregation: 'count' };
-    const pts = [day('2026-04-29', 1), day('2026-04-29', 1), day('2026-04-30', 1)];
+    const pts = [
+      { ...day('2026-04-29', 50), count_source_rows: 50 },
+      { ...day('2026-04-30', 75), count_source_rows: 75 },
+    ];
     const r = calculateMetric(meta, pts, 'last_week', new Date('2026-04-30').getTime());
-    expect(r.value).toBe(3);
+    expect(r.value).toBe(125); // antes daba 2 (cuenta de filas), ahora 125 (suma)
+    expect(r.source_rows).toBe(125);
+  });
+
+  it('avg pondera por count_source_rows (Sprint 4.3)', () => {
+    // Día A: 100 tickets con avg $500 = $50,000 total
+    // Día B: 10 tickets con avg $1000 = $10,000 total
+    // Promedio simple: (500+1000)/2 = $750 ❌
+    // Weighted avg: $60,000 / 110 = $545.45 ✅
+    const meta: MetricMeta = { id: 'tk', name: 'Ticket', aggregation: 'avg' };
+    const pts: TimeSeriesPoint[] = [
+      { metric_id: 'tk', value: 500, count_source_rows: 100, period_start: '2026-04-29', dimension_values: null },
+      { metric_id: 'tk', value: 1000, count_source_rows: 10, period_start: '2026-04-30', dimension_values: null },
+    ];
+    const r = calculateMetric(meta, pts, 'last_week', new Date('2026-04-30').getTime());
+    expect(r.value).toBeCloseTo(545.45, 1);
   });
 });
 

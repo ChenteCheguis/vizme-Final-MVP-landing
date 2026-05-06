@@ -20,6 +20,9 @@ export interface IngestDataPoint {
   period_start: string; // ISO yyyy-mm-dd
   period_end?: string;
   value: number;
+  // Sprint 4.3: # of source-file rows aggregated into `value`.
+  // Required for correct period-level count/avg in metricCalculator.
+  count_source_rows: number;
   dimension_values: Record<string, string>;
 }
 
@@ -234,6 +237,7 @@ function extractMetric(
     result.data_points.push({
       period_start: new Date().toISOString().slice(0, 10),
       value: aggValue,
+      count_source_rows: numericValues.length,
       dimension_values: {},
     });
     warnings.push('No detectamos una columna de fecha — usamos hoy como período.');
@@ -244,10 +248,19 @@ function extractMetric(
   // Detect date format from a sample of the column to handle US M/D/Y vs MX D/M/Y
   const dateFormat = detectDateFormat(best.sheet.rows.slice(0, 200).map((r) => r[dateCol]));
 
+  // Sprint 4.3 — apply optional pre-filter from schema (e.g. CANCELADO=FALSO)
+  // BEFORE bucketing, so cancelled tickets never enter sums or averages.
+  const filteredRows = applyMetricFilter(best.sheet.rows, metric.filter);
+  if (metric.filter && filteredRows.length < best.sheet.rows.length) {
+    warnings.push(
+      `Filtramos ${best.sheet.rows.length - filteredRows.length} filas por ${metric.filter.field} ${metric.filter.op} ${JSON.stringify(metric.filter.value)}.`
+    );
+  }
+
   const buckets = new Map<string, number[]>();
   let parsedRows = 0;
   let skippedRows = 0;
-  for (const row of best.sheet.rows) {
+  for (const row of filteredRows) {
     const dateRaw = row[dateCol];
     const numericRaw = toNumber(row[best.column]);
     const dateIso = toIsoDate(dateRaw, dateFormat);
@@ -276,6 +289,7 @@ function extractMetric(
     result.data_points.push({
       period_start: date,
       value: aggregate(values, metric.aggregation),
+      count_source_rows: values.length,
       dimension_values: {},
     });
   }
@@ -666,6 +680,58 @@ export function toNumber(v: unknown): number | null {
     }
     const n = Number(s);
     if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+// Sprint 4.3 — pre-bucketing filter (e.g. CANCELADO=FALSO).
+// Compares case-insensitively as strings. cleanCell coerces VERDADERO/FALSO
+// (Spanish) and TRUE/FALSE (English) to 1/0 before bucketing — we mirror
+// that coercion on the filter side so {field: 'CANCELADO', value: 'FALSO'}
+// matches a cell that's now stored as the number 0.
+function applyMetricFilter(
+  rows: Array<Record<string, string | number | null>>,
+  filter: Metric['filter']
+): Array<Record<string, string | number | null>> {
+  if (!filter) return rows;
+  const targetField = findHeaderInsensitive(rows, filter.field);
+  if (!targetField) return rows; // filter references missing column → no-op
+  const norm = (v: unknown) => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'boolean') return v ? '1' : '0';
+    const s = String(v).trim().toLowerCase();
+    if (s === 'verdadero' || s === 'true') return '1';
+    if (s === 'falso' || s === 'false') return '0';
+    return s;
+  };
+  const expected = Array.isArray(filter.value)
+    ? filter.value.map((v) => norm(v))
+    : [norm(filter.value)];
+  return rows.filter((row) => {
+    const cell = norm(row[targetField]);
+    switch (filter.op) {
+      case '=':
+        return cell === expected[0];
+      case '!=':
+        return cell !== expected[0];
+      case 'in':
+        return expected.includes(cell);
+      case 'not_in':
+        return !expected.includes(cell);
+      default:
+        return true;
+    }
+  });
+}
+
+function findHeaderInsensitive(
+  rows: Array<Record<string, string | number | null>>,
+  field: string
+): string | null {
+  if (rows.length === 0) return null;
+  const target = field.trim().toLowerCase();
+  for (const key of Object.keys(rows[0])) {
+    if (key.trim().toLowerCase() === target) return key;
   }
   return null;
 }
