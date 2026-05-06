@@ -1,18 +1,31 @@
 // ============================================================
 // VIZME V5 — Validador del DashboardBlueprint v2
-// Sprint 4
+// Sprint 4 → 4.3
 //
 // Asegura que lo que devuelve Opus encaje con la forma que
 // el renderer espera. Si algo no encaja, devuelve errores
 // específicos para que el orquestador pueda decidir si
 // reintentar o reportar.
+//
+// Sprint 4.3:
+//  - Mínimo 2 páginas
+//  - Cada página debe tener una sección hero con kpi_hero
+//  - auditDomainCoverage: warnings cuando faltan widgets
+//    priority=1 del catálogo de la industria
 // ============================================================
 
 import { VALID_VISUALIZATION_TYPES } from './visualizationCatalog.ts';
+import { getDomainWidgets, type DomainWidgetTemplate } from './domainWidgetCatalog.ts';
 
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+}
+
+export interface DomainCoverageReport {
+  industry: string;
+  missing: Array<{ id: string; type: string; title: string; reason: string }>;
+  satisfied: string[];
 }
 
 const VALID_SECTION_TYPES = new Set(['hero', 'kpi_row', 'chart_grid', 'insight_card', 'data_table']);
@@ -76,6 +89,10 @@ export function validateDashboardBlueprint(
     return { valid: errors.length === 0, errors };
   }
 
+  if (bp.pages.length < 2) {
+    errors.push('Blueprint debe tener mínimo 2 páginas (Sprint 4.3): General + 1 página específica.');
+  }
+
   const seenPagePriorities = new Set<number>();
   for (let i = 0; i < bp.pages.length; i++) {
     const page = bp.pages[i];
@@ -91,6 +108,16 @@ export function validateDashboardBlueprint(
     if (!Array.isArray(page.sections) || page.sections.length === 0) {
       errors.push(`${ctx}: debe tener al menos 1 sección.`);
       continue;
+    }
+
+    const heroSection = page.sections.find((s) => s.type === 'hero');
+    if (!heroSection) {
+      errors.push(`${ctx}: falta sección "hero" (Sprint 4.3 exige hero por página).`);
+    } else {
+      const heroHasKpiHero = (heroSection.widgets ?? []).some((w) => w.type === 'kpi_hero');
+      if (!heroHasKpiHero) {
+        errors.push(`${ctx}: la sección hero debe contener un widget kpi_hero.`);
+      }
     }
 
     for (let j = 0; j < page.sections.length; j++) {
@@ -153,4 +180,93 @@ export function countTotalWidgets(bp: ParsedBlueprint): number {
     }
   }
   return n;
+}
+
+function templateMatchesAvailable(
+  tpl: DomainWidgetTemplate,
+  metricNames: string[],
+  dimensionNames: string[]
+): { ok: boolean; reason: string } {
+  const lowerMetrics = metricNames.map((n) => n.toLowerCase());
+  const lowerDims = dimensionNames.map((n) => n.toLowerCase());
+
+  if (tpl.needs_metric_pattern && tpl.needs_metric_pattern.length > 0) {
+    const hasMatch = tpl.needs_metric_pattern.some((pat) =>
+      lowerMetrics.some((m) => m.includes(pat.toLowerCase()))
+    );
+    if (!hasMatch) {
+      return { ok: false, reason: `requiere métrica que matchee [${tpl.needs_metric_pattern.join('|')}], no hay disponible` };
+    }
+  }
+  if (tpl.needs_dimension_pattern && tpl.needs_dimension_pattern.length > 0) {
+    const hasMatch = tpl.needs_dimension_pattern.some((pat) =>
+      lowerDims.some((d) => d.includes(pat.toLowerCase()))
+    );
+    if (!hasMatch) {
+      return { ok: false, reason: `requiere dimensión [${tpl.needs_dimension_pattern.join('|')}], no hay disponible` };
+    }
+  }
+  return { ok: true, reason: '' };
+}
+
+function widgetSatisfiesTemplate(
+  tpl: DomainWidgetTemplate,
+  bp: ParsedBlueprint,
+  metricNamesById: Map<string, string>
+): boolean {
+  for (const page of bp.pages ?? []) {
+    for (const section of page.sections ?? []) {
+      for (const w of section.widgets ?? []) {
+        if (w.type !== tpl.type) continue;
+        if (!tpl.needs_metric_pattern || tpl.needs_metric_pattern.length === 0) {
+          return true;
+        }
+        const metricNames = (w.metric_ids ?? []).map(
+          (id) => metricNamesById.get(id)?.toLowerCase() ?? id.toLowerCase()
+        );
+        const hasMetricMatch = tpl.needs_metric_pattern.some((pat) =>
+          metricNames.some((n) => n.includes(pat.toLowerCase()))
+        );
+        if (hasMetricMatch) return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function auditDomainCoverage(
+  raw: unknown,
+  industry: string | null | undefined,
+  metrics: Array<{ id: string; name?: string }>,
+  dimensions: Array<{ id: string; name?: string }>
+): DomainCoverageReport {
+  const bp = (raw ?? {}) as ParsedBlueprint;
+  const widgets = getDomainWidgets(industry).filter((w) => w.priority === 1);
+  const ind = (industry ?? 'generic').toLowerCase();
+  const metricNames = metrics.flatMap((m) => [m.id, m.name ?? '']).filter(Boolean);
+  const dimensionNames = dimensions.flatMap((d) => [d.id, d.name ?? '']).filter(Boolean);
+  const metricNamesById = new Map<string, string>(metrics.map((m) => [m.id, m.name ?? m.id]));
+
+  const missing: DomainCoverageReport['missing'] = [];
+  const satisfied: string[] = [];
+
+  for (const tpl of widgets) {
+    const viable = templateMatchesAvailable(tpl, metricNames, dimensionNames);
+    if (!viable.ok) {
+      // Si los datos no permiten este widget, no contamos como faltante.
+      continue;
+    }
+    if (widgetSatisfiesTemplate(tpl, bp, metricNamesById)) {
+      satisfied.push(tpl.id);
+    } else {
+      missing.push({
+        id: tpl.id,
+        type: tpl.type,
+        title: tpl.title,
+        reason: 'datos disponibles pero no se incluyó en el blueprint',
+      });
+    }
+  }
+
+  return { industry: ind, missing, satisfied };
 }

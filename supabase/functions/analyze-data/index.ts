@@ -20,6 +20,7 @@ import {
 import {
   validateDashboardBlueprint,
   countTotalWidgets,
+  auditDomainCoverage,
 } from '../_shared/dashboardBlueprintValidator.ts';
 import {
   calculateAllMetrics,
@@ -604,56 +605,94 @@ async function handleBuildDashboardBlueprint(
     unique_dates: uniqueDates.size,
   };
 
-  // 4. Llamar a Opus
-  let claudeResp;
-  try {
-    claudeResp = await callClaude({
-      model: 'opus-4-7',
-      system: DASHBOARD_BLUEPRINT_SYSTEM_PROMPT,
-      messages: [
+  // 4. Llamar a Opus (con retry de 1 intento si la validación falla — Sprint 4.3)
+  const userPrompt = buildDashboardBlueprintUserPrompt({
+    businessSchema: {
+      business_identity: (schema.business_identity ?? {}) as Record<string, unknown>,
+      entities: (schema.entities ?? []) as Array<Record<string, unknown>>,
+      metrics: metrics as unknown as Array<Record<string, unknown>>,
+      dimensions: dimensions as unknown as Array<Record<string, unknown>>,
+    },
+    dataSummary,
+  });
+
+  type ClaudeResp = Awaited<ReturnType<typeof callClaude>>;
+  let claudeResp: ClaudeResp;
+  let parsed: Record<string, unknown> = {};
+  let validation = { valid: false, errors: ['no-validated-yet'] as string[] };
+  let attempts = 0;
+  const MAX_ATTEMPTS = 2;
+  let lastErrors: string[] = [];
+
+  while (attempts < MAX_ATTEMPTS && !validation.valid) {
+    attempts++;
+    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+      { role: 'user', content: userPrompt },
+    ];
+    if (attempts > 1) {
+      messages.push(
+        {
+          role: 'assistant',
+          content:
+            'Último intento generó un blueprint con errores. Aquí va corregido.',
+        },
         {
           role: 'user',
-          content: buildDashboardBlueprintUserPrompt({
-            businessSchema: {
-              business_identity: (schema.business_identity ?? {}) as Record<string, unknown>,
-              entities: (schema.entities ?? []) as Array<Record<string, unknown>>,
-              metrics: metrics as unknown as Array<Record<string, unknown>>,
-              dimensions: dimensions as unknown as Array<Record<string, unknown>>,
-            },
-            dataSummary,
-          }),
-        },
-      ],
-      max_tokens: 8000,
-      cache_control: true,
-    });
-  } catch (err) {
-    return errorResponse(502, 'Opus falló diseñando el blueprint.', { detail: (err as Error).message });
+          content: `El blueprint anterior tuvo estos errores. Corrígelos y devuelve SÓLO JSON válido:\n${lastErrors
+            .slice(0, 20)
+            .map((e) => `- ${e}`)
+            .join('\n')}`,
+        }
+      );
+    }
+
+    try {
+      claudeResp = await callClaude({
+        model: 'opus-4-7',
+        system: DASHBOARD_BLUEPRINT_SYSTEM_PROMPT,
+        messages,
+        max_tokens: 8000,
+        cache_control: true,
+      });
+    } catch (err) {
+      return errorResponse(502, 'Opus falló diseñando el blueprint.', {
+        detail: (err as Error).message,
+        attempts,
+      });
+    }
+
+    try {
+      const cleaned = claudeResp.text
+        .replace(/^[\s\S]*?(\{)/, '$1')
+        .replace(/```json\s*/i, '')
+        .replace(/```\s*$/, '')
+        .trim();
+      parsed = JSON.parse(cleaned);
+    } catch (err) {
+      lastErrors = [`JSON inválido: ${(err as Error).message}`];
+      validation = { valid: false, errors: lastErrors };
+      continue;
+    }
+
+    validation = validateDashboardBlueprint(parsed, knownMetricIds, knownDimensionIds);
+    lastErrors = validation.errors;
   }
 
-  // 5. Parsear JSON (puede venir con fences ```json)
-  let parsed: Record<string, unknown>;
-  try {
-    const cleaned = claudeResp.text
-      .replace(/^[\s\S]*?(\{)/, '$1')
-      .replace(/```json\s*/i, '')
-      .replace(/```\s*$/, '')
-      .trim();
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    return errorResponse(502, 'Opus devolvió un blueprint que no es JSON válido.', {
-      detail: (err as Error).message,
-      raw: claudeResp.text.slice(0, 500),
-    });
-  }
-
-  // 6. Validar estructura
-  const validation = validateDashboardBlueprint(parsed, knownMetricIds, knownDimensionIds);
   if (!validation.valid) {
-    return errorResponse(502, 'El blueprint generado tiene errores estructurales.', {
+    return errorResponse(502, 'El blueprint generado tiene errores estructurales tras 2 intentos.', {
       validation_errors: validation.errors.slice(0, 20),
+      attempts,
     });
   }
+
+  // 6.5 Auditoría de cobertura por dominio (warnings, no bloquea)
+  const industry = (schema.business_identity as { industry?: string } | null)?.industry ?? null;
+  const coverage = auditDomainCoverage(
+    parsed,
+    industry,
+    metrics as unknown as Array<{ id: string; name?: string }>,
+    dimensions as unknown as Array<{ id: string; name?: string }>
+  );
 
   const totalWidgets = countTotalWidgets(parsed as Parameters<typeof countTotalWidgets>[0]);
   const duration = Date.now() - t0;
@@ -710,12 +749,14 @@ async function handleBuildDashboardBlueprint(
     layout_strategy: parsed.layout_strategy,
     opus_reasoning: parsed.opus_reasoning,
     pages: parsed.pages,
+    domain_coverage: coverage,
+    blueprint_attempts: attempts,
     usage: {
       model: 'claude-opus-4-7',
-      tokens_input: claudeResp.tokens_input,
-      tokens_output: claudeResp.tokens_output,
-      tokens_cached_read: claudeResp.tokens_cached_read ?? 0,
-      tokens_cached_write: claudeResp.tokens_cached_write ?? 0,
+      tokens_input: claudeResp!.tokens_input,
+      tokens_output: claudeResp!.tokens_output,
+      tokens_cached_read: claudeResp!.tokens_cached_read ?? 0,
+      tokens_cached_write: claudeResp!.tokens_cached_write ?? 0,
       duration_ms: duration,
     },
   });
