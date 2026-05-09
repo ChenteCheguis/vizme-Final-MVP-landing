@@ -151,6 +151,114 @@ filas con valores realistas.
 
 ---
 
+## Escenario D — Interactividad cross-filter + drill (P3)
+
+Continuación natural del Escenario A — el dashboard PIX ya está
+cargado y nos sirve de campo de pruebas.
+
+### D1. Tooltip rico
+
+1. Hover sobre cualquier barra de un BarChart o BarHorizontal.
+2. El tooltip debe mostrar:
+   - Header con label (nombre de la categoría o fecha formateada
+     "21 oct 2023" en time charts).
+   - Punto de color de la serie + nombre de la métrica.
+   - Valor en formato MXN para currency: `$3,552,294`.
+   - `% del total` cuando es donut/pie.
+3. Si la métrica es percent (ej. `tasa_propina`), el tooltip debe
+   leer `12.4%`, no `0.124` ni `12.4`.
+
+### D2. Cross-filter por click
+
+1. En un widget tipo `bar_horizontal` o `bar_chart` que muestre
+   "Top meseros por ventas" (o cualquier breakdown), click en una
+   barra (ej. "Mesero 5").
+2. **Esperado:**
+   - Aparece la `FilterBar` arriba con un chip
+     `mesero: Mesero 5 ✕`.
+   - La barra clickeada queda en color pleno; las demás se atenúan
+     (`${color}55` ≈ 30% opacidad).
+   - Otros widgets que comparten la dimensión `mesero` reaccionan:
+     sus breakdowns se reducen al item filtrado y su `value`
+     (cuando es sum/count) se recalcula a la suma filtrada.
+   - Los widgets de OTRAS dimensiones (ej. ventas por día) NO
+     cambian — el cliente no inventa cross-tabs (ver "P3 honesto"
+     en validation report).
+3. Click otra vez en la misma barra → toggle off, filtro removido,
+   FilterBar desaparece (si no había drill activo).
+
+### D3. Reemplazar filtro de la misma dimensión
+
+1. Con el filtro `mesero: Mesero 5` activo, click en otro mesero
+   en otra barra (ej. "Mesero 3").
+2. **Esperado:** el chip cambia a `mesero: Mesero 3 ✕` (single-
+   select por dimensión — no se acumulan dos meseros).
+
+### D4. Combinar filtros de distintas dimensiones
+
+1. Con `mesero: Mesero 5`, click en `dia_semana: sábado` en otro
+   widget categórico.
+2. **Esperado:** dos chips en FilterBar.
+3. **Importante:** ambos filtros se aplican independientemente —
+   ventas filtradas por mesero y separadamente por día. No es un
+   AND cruzado (no tenemos datos para eso).
+
+### D5. Click en leyenda del Donut
+
+1. En un Donut (ej. mezcla de pago efectivo/tarjeta), click en
+   "tarjeta" en la leyenda lateral.
+2. **Esperado:** mismo comportamiento que click en el slice — chip
+   `metodo_pago: tarjeta`. Item activo en bg coral, los demás al
+   50% opacidad.
+
+### D6. HeatmapGrid clickeable
+
+1. En el heatmap día×hora (si el dataset tiene columna de hora;
+   PIX no tiene, así que prueba con otro dataset), click en una
+   fila.
+2. **Esperado:** chip con la fila como filtro; otras filas al 40%
+   opacity.
+
+### D7. Drill-down temporal
+
+1. Localiza un LineChart o AreaChart en el dashboard que muestre
+   tendencia mensual (ej. ventas por mes durante 2023-2024).
+2. Verificar que abajo del chart hay hint:
+   "Click en un punto para ver meses" o "ver días".
+3. Click en el punto del año `2023`.
+4. **Esperado:**
+   - FilterBar muestra breadcrumb `Mostrando: 2023 [↑ Subir nivel]`.
+   - El chart re-agrega por mes: ahora 12 puntos en lugar de 2 años.
+   - Otros widgets temporales también recortan su time_series a 2023.
+5. Click en el punto de `mar 2024` (después de subir nivel y bajar
+   en otro año).
+6. **Esperado:** breadcrumb `Mostrando: 2024 › mar 2024` y el chart
+   muestra los días de marzo.
+
+### D8. Limpiar todo
+
+1. Con varios chips + drill activos, click en `↺ Limpiar todo` al
+   final de la FilterBar.
+2. **Esperado:** todos los filtros y drill steps se borran. La
+   FilterBar desaparece. El dashboard regresa a vista completa.
+
+### D9. Filtros persisten al cambiar de página
+
+1. Con un filtro activo, click en otra página del PageNav
+   (Operaciones, Equipo, etc.).
+2. **Esperado:** el filtro permanece. Los widgets de la nueva
+   página que comparten dimensión también se filtran.
+
+### D10. Filtros NO persisten al recargar (intencional)
+
+1. Con filtros activos, refresh del navegador.
+2. **Esperado:** el dashboard carga sin filtros — el estado vive
+   en el provider de React, no se persiste en URL ni storage.
+   (Documentado como out-of-scope para Sprint 4.4 si se quiere
+   compartir vistas filtradas via URL.)
+
+---
+
 ## Escenario C — Industria desconocida (fallback `generic`)
 
 ### Setup
@@ -261,6 +369,14 @@ investigarse antes de mergear.
 - [ ] `domain_coverage.industry` correcto para restaurantes / barberías / desconocida
 - [ ] `blueprint_attempts` reportado en respuesta (1 normalmente, 2 si Opus auto-corrigió)
 - [ ] Filter referenciando columna inexistente NO rompe ingest
+- [ ] **Tooltip rico aparece con currency MXN, no número crudo**
+- [ ] **Click en barra/segmento agrega chip a FilterBar**
+- [ ] **Click en leyenda de Donut también filtra**
+- [ ] **Click en línea/area drill por año → mes → día**
+- [ ] **Breadcrumb de drill aparece con `↑ Subir nivel`**
+- [ ] **`↺ Limpiar todo` resetea filtros + drill**
+- [ ] **Widgets resaltan valor activo, atenúan los demás**
+- [ ] **Filtros persisten al cambiar de página, NO al recargar**
 - [ ] `npm run validate:pix` exit 0 con las 6 métricas verdes
 - [ ] `npx tsc --noEmit` clean en local antes del PR
 

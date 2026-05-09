@@ -29,13 +29,14 @@ narrativas que se desvíen >5% del valor real.
 
 ---
 
-## Tres frentes en una branch
+## Cuatro frentes en una branch
 
 | Frente | Tema | Commits |
 |---|---|---|
 | **Métricas correctas** | count = Σvalue, avg ponderado, filter pre-bucketing | `5dd42ff` |
 | **Anti-alucinación** | Marcadores `[METRIC]/[PCT]` exigidos en insights, validador 5% | `5dd42ff` |
 | **Identidad por dominio** | Catálogo 6 industrias, multi-página obligatoria, audit + retry | `312e300` |
+| **Interactividad (P3)** | Cross-filter, drill-down temporal, RichTooltip PBI-level | `96bf1dd` |
 
 ---
 
@@ -195,6 +196,76 @@ narrativa vacía, narrativa cualitativa, tolerancia 5%).
 
 ---
 
+## Cambios — interactividad (P3)
+
+### Bug raíz
+
+Después de Sprint 4.2 el dashboard rendereaba bien pero era 100%
+estático. Click en una barra: nada. Click en mes de la línea: nada.
+Tooltips de Recharts crudos sin formato MXN ni change%. Para un
+producto que aspira a reemplazar consultoría BI, no podía sentirse
+decorativo.
+
+### Fix — 4 piezas nuevas
+
+1. **`contexts/DashboardFilterContext.tsx`** — provider con
+   `{ activeFilters, drillPath }` + `addFilter`, `removeFilter`,
+   `toggleFilter`, `clearAllFilters`, `drillDown`, `drillUp`,
+   `resetDrill`, `isFilterActive`, `getActiveValueForDimension`.
+   Single-select por dimensión. `useOptionalDashboardFilters` para
+   widgets renderizables fuera del provider.
+
+2. **`lib/hooks/useFilteredMetrics.ts`** — hook + función pura
+   `applyFiltersToCalcs`:
+   - Filtra `breakdown_by_dimension[dim]` al value seleccionado.
+   - Recalcula `value` como `Σ filtered` para `sum`/`count`.
+   - Preserva `value` original para `avg`/`ratio` (sin source_rows
+     por categoría no podemos re-ponderar honestamente).
+   - Recorta `time_series` por prefijo ISO según drill step.
+   - **No inventa cross-tabs** — breakdowns de OTRAS dimensiones
+     quedan intactos cuando hay un filtro de mesero.
+
+3. **`components/dashboard/FilterBar.tsx`** — chips removibles
+   (`mesero: Mesero 5 ✕`) + breadcrumb temporal
+   (`Año 2024 › mar 2024`) + CTAs `↑ Subir nivel` y `↺ Limpiar
+   todo`. Render condicional: oculto cuando todo está limpio.
+
+4. **`components/dashboard/widgets/RichTooltip.tsx`** — tooltip
+   PBI-level:
+   - Formatea cada serie según `metric.format` (currency MXN /
+     percent / number / duration).
+   - `share` opcional para `% del total` en donuts.
+   - `formatLabel` para fechas ISO → "21 oct 2023".
+   - Detecta `change_percent` con flecha emerald/rose.
+
+### Widgets clickeables
+
+| Widget | Acción | Implementado |
+|---|---|---|
+| `bar_chart`, `bar_horizontal`, `bar_stacked` | `toggleFilter(dim, key)` | ✅ |
+| `donut_chart` (slice + leyenda) | `toggleFilter` | ✅ |
+| `treemap` (cell) | `toggleFilter` | ✅ |
+| `heatmap_grid` (fila/celda) | `toggleFilter` | ✅ |
+| `line_chart`, `area_chart` (point) | `drillDown` year→month→day | ✅ |
+| `kpi_*`, `gauge`, `radial_bar` | — (1 valor, no segmentable) | n/a |
+| `composed_chart`, `scatter`, `funnel` | Tooltip rico, no filter | parcial |
+
+**Resaltado visual:** valor filtrado en color pleno, otros a
+`${color}55` (~30% opacity). Donut leyenda: item activo en
+bg coral, otros 50%. Heatmap fila inactiva 40%.
+
+**Drill-down temporal** — niveles soportados con datos diarios:
+- `year`: agrega por año cuando la serie cubre >18 meses.
+- `month`: cuando hay >6 meses o ya hay un año en el path.
+- `day`: granularidad final.
+- `week` / `hour`: out-of-scope hasta que ingest persista hora.
+
+### Tests P3
+
+- `useFilteredMetrics.test.ts` (9): cross-filter sum/count/avg, drill
+  year/month, combinaciones, hasActive flags.
+- `richTooltipFormat.test.ts` (5): formato ISO multi-granular.
+
 ## Cambios — identidad por dominio
 
 ### Bug raíz
@@ -258,7 +329,7 @@ Más:
 
 ```
 $ npx tsc --noEmit                            ✓ no errors
-$ npx vitest run                              ✓ 97 passed | 4 skipped
+$ npx vitest run                              ✓ 111 passed | 4 skipped
 $ npm run validate:pix                        ✓ 6/6 dentro del 1%
 ```
 
@@ -267,6 +338,8 @@ $ npm run validate:pix                        ✓ 6/6 dentro del 1%
 | `metricCalculator.test.ts` | 12 | +5 nuevos para count=Σ, weighted avg, source_rows |
 | `insightValidator.test.ts` | 13 | Nuevo |
 | `domainWidgetCatalog.test.ts` | 8 | Nuevo |
+| `useFilteredMetrics.test.ts` | 9 | Nuevo P3 |
+| `richTooltipFormat.test.ts` | 5 | Nuevo P3 |
 | `ingestEngine_real_files.test.ts` | 18 (3 skipped) | Sin cambios |
 | `dashboardHealth.test.ts` | 11 | Sin cambios |
 | `useFullDashboardSetup.test.ts` | 4 | Sin cambios |
@@ -302,6 +375,22 @@ supabase/functions/analyze-data/index.ts                     +167 / -82
 supabase/functions/_shared/__tests__/metricCalculator.test.ts          +31 / -8
 supabase/functions/_shared/__tests__/insightValidator.test.ts          (new) +136
 supabase/functions/_shared/__tests__/domainWidgetCatalog.test.ts       (new) +68
+
+# P3 — Cross-filter, drill-down, RichTooltip
+contexts/DashboardFilterContext.tsx                                    (new) +148
+lib/hooks/useFilteredMetrics.ts                                        (new) +180
+components/dashboard/FilterBar.tsx                                     (new) +84
+components/dashboard/widgets/RichTooltip.tsx                           (new) +145
+components/dashboard/widgets/CategoricalWidgets.tsx                    rewrite
+components/dashboard/widgets/TimeWidgets.tsx                           rewrite
+components/dashboard/widgets/SpecialtyWidgets.tsx                      +60 / -20
+components/dashboard/widgets/WidgetShell.tsx                           +6 / -1
+components/dashboard/widgets/widgetTypes.ts                            +3
+components/dashboard/DashboardSection.tsx                              +6 / -1
+components/dashboard/DashboardRenderer.tsx                             +13 / -4
+lib/v5types.ts                                                         +12 (source_rows en MetricCalculationValue)
+lib/__tests__/useFilteredMetrics.test.ts                               (new) +220
+lib/__tests__/richTooltipFormat.test.ts                                (new) +33
 ```
 
 ---
@@ -326,8 +415,18 @@ supabase/functions/_shared/__tests__/domainWidgetCatalog.test.ts       (new) +68
 - [x] `auditDomainCoverage` reporta missing widgets
 - [x] Retry 1 vez si Opus falla validación
 - [x] `domain_coverage` y `blueprint_attempts` en respuesta del edge
+- [x] `DashboardFilterContext` provider funcional (add/remove/toggle/drill)
+- [x] `useFilteredMetrics` filtra breakdown del dim activo
+- [x] `useFilteredMetrics` recalcula sum/count, preserva avg/ratio
+- [x] `useFilteredMetrics` recorta time_series según drill
+- [x] `FilterBar` con chips + breadcrumb + CTAs
+- [x] `RichTooltip` formatea según `metric.format` (currency, percent, etc.)
+- [x] BarChart, BarHorizontal, BarStacked, Donut, Treemap clickeables
+- [x] HeatmapGrid clickeable (fila/celda)
+- [x] LineChart y AreaChart drill year → month → day
+- [x] Resaltado visual de valor activo + atenuación de inactivos
 - [x] `npx tsc --noEmit` clean
-- [x] `npx vitest run` 97/97 passing
+- [x] `npx vitest run` 111/111 passing
 
 ---
 
@@ -345,5 +444,16 @@ supabase/functions/_shared/__tests__/domainWidgetCatalog.test.ts       (new) +68
 - Validador anti-alucinación para narrativas largas con múltiples
   números — la heurística "tag dentro de 80 chars" puede fallar con
   oraciones muy elaboradas.
+- **Cross-tabs reales** (mesero × día_semana, mesero × hora). Hoy el
+  filtro por dim sólo afecta widgets que usan ESA dim. Para cross-
+  filter "Mesero 5 ¿qué hace los sábados?" requiere persistir
+  `cross_tabs_by_dimension` en metric_calculations — Sprint 4.4.
+- **Drill semana / hora.** El ingestEngine bucketea por día. Cuando
+  los datos persistan hora, se habilitan más niveles.
+- **Comparación lado a lado** (split view comparando mesero A vs B).
+  Documentado en spec original como "opcional si tiempo permite";
+  diferido a Sprint 4.5.
+- **Filtros persistentes via URL.** Hoy viven en React state — refresh
+  los borra. Útil para compartir vistas filtradas, queda para 4.4.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

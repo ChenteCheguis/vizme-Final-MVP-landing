@@ -14,6 +14,7 @@
 | **P1.b** — Sonnet generaba narrativas con números alucinados (ej. "$750" cuando real era $538) | BLOCKING | ✅ Fixed |
 | **P2** — Opus generaba dashboards genéricos sin widgets prototípicos del giro; restaurante y barbería terminaban con la misma plantilla | UX | ✅ Fixed |
 | **P2.b** — Blueprints monopágina pasaban validación; "general" como única página perdía la oportunidad de separar panorámica de operativa | UX | ✅ Fixed |
+| **P3** — Dashboard 100% estático: clicks no filtraban, no había drill-down temporal, tooltips de Recharts crudos sin formato MXN ni change% | UX | ✅ Fixed |
 
 ## Architecture changes
 
@@ -170,6 +171,111 @@ barbería terminaba con los mismos widgets que un restaurante.
 
 4. **`getDomainWidgets`** cae a `generic` si la industria no matchea.
 
+## P3 — Cross-filter, drill-down temporal y tooltips PBI-level
+
+**Root cause:** después de Sprint 4.2 el dashboard rendereaba pero era
+100% estático. Click en una barra: nada. Click en un mes de la línea:
+nada. Tooltips de Recharts en raw (`Math.round(value)` sin formato
+MXN, sin change%). Para un producto que aspira a reemplazar
+consultoría BI, no podía sentirse decorativo.
+
+**Fix — 4 piezas nuevas:**
+
+1. **`contexts/DashboardFilterContext.tsx`** — provider con estado
+   `{ activeFilters: DashboardFilter[], drillPath: DrillStep[] }` +
+   API: `addFilter`, `removeFilter`, `toggleFilter`,
+   `clearAllFilters`, `drillDown`, `drillUp`, `resetDrill`,
+   `isFilterActive`, `getActiveValueForDimension`. Single-select por
+   dimensión (agregar un filtro nuevo de la misma dim reemplaza el
+   anterior) y `useOptionalDashboardFilters` para widgets que pueden
+   renderearse fuera del provider en tests.
+
+2. **`lib/hooks/useFilteredMetrics.ts`** — hook + función pura
+   `applyFiltersToCalcs(calcs, metricsById, filters, drillPath)` que:
+   - Filtra cada `breakdown_by_dimension[dim]` a solo el `value`
+     seleccionado cuando hay filtro para esa dim.
+   - Recalcula `value` como `sum(filtered)` SOLO cuando la métrica es
+     `sum` o `count` (additivas). Para `avg`/`ratio` preservamos el
+     value original — sin source_rows por categoría no hay forma
+     honesta de re-ponderar.
+   - Recorta `time_series` por prefijo ISO (`yyyy` / `yyyy-mm` /
+     `yyyy-mm-dd`) según el último drill step.
+   - **Honesto sobre lo que NO puede hacer:** breakdowns de OTRAS
+     dimensiones quedan intactos — el cliente no tiene cross-tabs
+     (mesero × dia_semana), así que no inventa qué pasa con
+     "ventas por día" cuando el filtro es "Mesero 5".
+
+3. **`components/dashboard/FilterBar.tsx`** — barra editorial arriba
+   del dashboard con render condicional. Chips removibles con la
+   etiqueta `dim:value`, breadcrumb `Año 2024 › mar 2024 › 21 mar`
+   con CTA `↑ Subir nivel`, y `↺ Limpiar todo`. Aparece cuando hay
+   filtros o drill activos; oculta cuando todo está limpio.
+
+4. **`components/dashboard/widgets/RichTooltip.tsx`** — tooltip
+   estilo PBI/Tableau:
+   - Formatea cada serie según `metric.format` (currency MXN /
+     percent / number / duration).
+   - Muestra `% del total` cuando se le pasa `share` (donut).
+   - Detecta `payload.change_percent` y dibuja flecha ↑/↓/− con
+     color emerald/rose/grey.
+   - Header con label formateado (acepta `formatLabel` para fechas
+     ISO → "21 oct 2023").
+   - Helper `formatIsoDateLabel` exportado, con tests.
+
+### Widgets clickeables — qué hace cada interacción
+
+| Widget | Acción | Estado |
+|---|---|---|
+| `bar_chart` | Click en barra → `toggleFilter(dim, key)` | ✅ |
+| `bar_horizontal` | Click en barra → `toggleFilter(dim, key)` | ✅ |
+| `bar_stacked` | Click en categoría → `toggleFilter(dim, key)` | ✅ |
+| `donut_chart` | Click en slice o leyenda → `toggleFilter` | ✅ |
+| `treemap` | Click en celda → `toggleFilter` | ✅ |
+| `heatmap_grid` | Click en fila o celda → `toggleFilter` | ✅ |
+| `line_chart` | Click en punto → `drillDown` (year→month→day) | ✅ |
+| `area_chart` | Click en punto → `drillDown` | ✅ |
+| `kpi_*` | No clickeable (lectura, no agregación cruzable) | — |
+| `gauge`, `radial_bar` | No clickeable (1 valor) | — |
+| `composed_chart` | Tooltip rico, sin filter por ambigüedad bar+line | — |
+| `scatter_chart` | Tooltip rico, sin filter (correlación, no segmentación) | — |
+| `funnel_chart` | Tooltip rico, sin filter | — |
+| `data_table` | (Sprint 4.4) | — |
+| `sankey` | Fallback de lista (Sprint 4.5) | — |
+
+**Resaltado visual cuando hay filtro:** la barra/segmento del valor
+filtrado mantiene color pleno; los demás se atenúan a `${color}55`.
+La leyenda del donut hace lo mismo (item activo en bg coral, otros a
+50% opacity). En heatmap, fila inactiva al 40% opacity.
+
+**Drill-down temporal — niveles soportados:**
+- `year`: cuando hay >18 meses distintos en la serie, line/area
+  agregan por año. Click en un año → drill `month`.
+- `month`: cuando el drill ya tiene un año o cuando hay >6 meses.
+  Click en un mes → drill `day`.
+- `day`: granularidad final con los datos actuales.
+- `week` / `hour`: out-of-scope — ingestEngine bucketea por día,
+  no por hora. Cuando los datos persistan hora, se habilita.
+
+### Tests
+
+`lib/__tests__/useFilteredMetrics.test.ts` (9 tests):
+- Sin filtros: regresa input intacto (referencia preservada).
+- Cross-filter sum: recalcula value como sum filtrada.
+- Cross-filter count: idem.
+- Cross-filter avg: preserva value original (no re-pondera).
+- Cross-filter NO toca otras dimensiones (honesto sobre cross-tab).
+- Drill year recorta + re-suma yyyy.
+- Drill month recorta + re-suma yyyy-mm.
+- Drill + cross-filter combinados.
+- `hasActiveFilters` / `hasActiveDrill` reportados correctamente.
+
+`lib/__tests__/richTooltipFormat.test.ts` (5 tests):
+- yyyy-mm-dd → "21 oct 2023"
+- yyyy-mm → "mar 2024"
+- yyyy → "2024"
+- undefined → ""
+- input no-fecha → input intacto
+
 ## P2.b — Multi-página obligatoria + auditoría de cobertura
 
 **Root cause:** El validador permitía blueprints de 1 página, lo que
@@ -204,7 +310,7 @@ perdiendo la separación natural entre panorámica (dueño) y operativa.
 
 ```
 $ npx tsc --noEmit                                        ✓ no errors
-$ npx vitest run                                          ✓ 97 passed | 4 skipped (101)
+$ npx vitest run                                          ✓ 111 passed | 4 skipped (115)
 $ npm run validate:pix                                    ✓ 6/6 dentro del threshold 1%
 ```
 
@@ -213,6 +319,8 @@ $ npm run validate:pix                                    ✓ 6/6 dentro del thr
 | `metricCalculator.test.ts` | 12 | +5 nuevos para count=Σvalue, weighted avg, source_rows ≠ data_points |
 | `insightValidator.test.ts` | 13 | Nuevo — happy path + 5 rechazos + 4 edge cases (k/mil, vacío, cualitativo, tolerancia 5%) |
 | `domainWidgetCatalog.test.ts` | 8 | Nuevo — mapeo de industrias, tipos válidos, kpi_hero garantizado, prompt format |
+| `useFilteredMetrics.test.ts` | 9 | Nuevo P3 — cross-filter por dim, drill year/month, combinaciones |
+| `richTooltipFormat.test.ts` | 5 | Nuevo P3 — formato ISO multi-granular |
 | `ingestEngine_real_files.test.ts` | 18 (3 skipped) | Sin cambios — pasa con count_source_rows en data_points |
 | `dashboardHealth.test.ts` | 11 | Sin cambios |
 | `useFullDashboardSetup.test.ts` | 4 | Sin cambios |
@@ -229,13 +337,15 @@ pasan limpio cuando los fixtures están presentes.
 | Quality gate | `scripts/validate-pix-metrics.ts` (new), `scripts/debug-pix-extract.ts` (new), `package.json` (`validate:pix` script) |
 | Anti-alucinación | `supabase/functions/_shared/insightValidator.ts` (new), `supabase/functions/_shared/__tests__/insightValidator.test.ts` (new), `supabase/functions/_shared/prompts/generateInsightsPrompt.ts`, `supabase/functions/analyze-data/index.ts` |
 | Catálogo de dominio | `supabase/functions/_shared/domainWidgetCatalog.ts` (new), `supabase/functions/_shared/__tests__/domainWidgetCatalog.test.ts` (new), `supabase/functions/_shared/prompts/buildDashboardBlueprintPrompt.ts`, `supabase/functions/_shared/dashboardBlueprintValidator.ts`, `supabase/functions/analyze-data/index.ts` |
+| Cross-filter + drill (P3) | `contexts/DashboardFilterContext.tsx` (new), `lib/hooks/useFilteredMetrics.ts` (new), `components/dashboard/FilterBar.tsx` (new), `components/dashboard/widgets/RichTooltip.tsx` (new), `components/dashboard/widgets/CategoricalWidgets.tsx`, `components/dashboard/widgets/TimeWidgets.tsx`, `components/dashboard/widgets/SpecialtyWidgets.tsx`, `components/dashboard/widgets/WidgetShell.tsx`, `components/dashboard/widgets/widgetTypes.ts`, `components/dashboard/DashboardSection.tsx`, `components/dashboard/DashboardRenderer.tsx`, `lib/v5types.ts` (source_rows en MetricCalculationValue), `lib/__tests__/useFilteredMetrics.test.ts` (new), `lib/__tests__/richTooltipFormat.test.ts` (new) |
 | Auditoría | `debug/sprint43_metric_calc_audit.md` (new) |
 
-2 commits sobre la branch este sprint:
+3 commits de código + 1 de docs sobre la branch este sprint:
 
 ```
-312e300 feat(blueprint): catálogo por dominio + multi-página obligatorio
-5dd42ff fix(metrics): cálculos correctos + anti-hallucination Sprint 4.3
+96bf1dd feat(dashboard): cross-filter + drill-down + rich tooltips (P3)
+312e300 feat(blueprint): catálogo por dominio + multi-página obligatorio (P2)
+5dd42ff fix(metrics): cálculos correctos + anti-hallucination (P1)
 ```
 
 ## Acceptance checklist
@@ -261,7 +371,17 @@ pasan limpio cuando los fixtures están presentes.
 - [x] `auditDomainCoverage` reporta missing widgets priority=1
 - [x] `handleBuildDashboardBlueprint` reintenta 1 vez si validación falla
 - [x] Respuesta del edge expone `domain_coverage` y `blueprint_attempts`
+- [x] `DashboardFilterContext` provider expone API completa (add/remove/toggle/drill)
+- [x] `useFilteredMetrics` filtra breakdown del dim activo y recalcula sum/count
+- [x] `useFilteredMetrics` preserva value de avg/ratio (no inventa cross-tab)
+- [x] `useFilteredMetrics` recorta time_series al rango del último drill step
+- [x] `FilterBar` muestra chips removibles + breadcrumb con CTAs
+- [x] `RichTooltip` formatea currency / percent / number según `metric.format`
+- [x] BarChart, BarHorizontal, BarStacked, Donut, Treemap son clickeables
+- [x] HeatmapGrid clickeable (fila para 2D, celda para 1D)
+- [x] LineChart y AreaChart drill year → month → day
+- [x] Widgets resaltan el valor activo y atenúan los demás
 - [x] `npx tsc --noEmit` clean
-- [x] `npx vitest run` 97/97 passing (4 fixture-dependent skipped)
+- [x] `npx vitest run` 111/111 passing (4 fixture-dependent skipped)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
