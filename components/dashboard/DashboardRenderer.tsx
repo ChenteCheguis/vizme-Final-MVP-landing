@@ -18,6 +18,7 @@ import { DashboardWidgetView } from './widgets';
 import InsightCard from './InsightCard';
 import PageNav from './PageNav';
 import type { WidgetRenderProps } from './widgets/widgetTypes';
+import { useFilteredMetrics } from '../../lib/hooks/useFilteredMetrics';
 
 export interface DashboardRendererProps {
   blueprint: DashboardBlueprint;
@@ -176,14 +177,21 @@ export default function DashboardRenderer({
   const [activeId, setActiveId] = useState<string>(pages[0]?.id ?? '');
   const activePage = pages.find((p) => p.id === activeId) ?? pages[0];
 
+  // Sprint 4.3 P3 — aplica filtros activos del DashboardFilterContext
+  // (cross-filter + drill temporal) sobre los cálculos client-side.
+  const { filtered } = useFilteredMetrics({
+    calcsByMetricPeriod,
+    metricsById,
+  });
+
   const renderWidget = useMemo(() => {
     return (w: DashboardWidget) => {
       const calcs: WidgetRenderProps['calcs'] = {};
       const calcsAllTime: WidgetRenderProps['calcsAllTime'] = {};
       const metricsRecord: WidgetRenderProps['metrics'] = {};
       for (const mid of w.metric_ids) {
-        calcs[mid] = calcsByMetricPeriod.get(mid)?.get(period);
-        calcsAllTime[mid] = calcsByMetricPeriod.get(mid)?.get('all_time');
+        calcs[mid] = filtered.get(mid)?.get(period);
+        calcsAllTime[mid] = filtered.get(mid)?.get('all_time');
         metricsRecord[mid] = metricsById.get(mid);
       }
       return (
@@ -196,7 +204,7 @@ export default function DashboardRenderer({
         />
       );
     };
-  }, [calcsByMetricPeriod, metricsById, period]);
+  }, [filtered, metricsById, period]);
 
   if (!activePage) {
     return (

@@ -4,11 +4,19 @@
 import { Sparkles } from 'lucide-react';
 import type { WidgetCardShellProps } from './widgetTypes';
 
-export function WidgetShell({ title, subtitle, insight, children, className }: WidgetCardShellProps) {
+export function WidgetShell({
+  title,
+  subtitle,
+  insight,
+  children,
+  className,
+  dimmed,
+}: WidgetCardShellProps) {
   return (
     <article
       className={[
         'relative flex h-full flex-col rounded-3xl border border-vizme-navy/8 bg-white/85 p-6 backdrop-blur-md shadow-soft transition-all hover:-translate-y-0.5',
+        dimmed ? 'opacity-60 hover:opacity-90' : '',
         className ?? '',
       ].join(' ')}
     >

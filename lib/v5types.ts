@@ -318,13 +318,22 @@ export type MetricCalculationPeriod =
   | 'last_month'
   | 'last_week';
 
+// Sprint 4.3: backend `metricCalculator` ahora emite `source_rows` y
+// `data_points` separados (vs el viejo `count` ambiguo). El campo `count`
+// se mantiene como alias hacia `data_points` para compatibilidad con
+// proyectos calculados antes de la migration 15.
 export type MetricCalculationValue = {
   value: number | null;
-  count: number;
+  count?: number; // deprecated — usar source_rows o data_points
+  source_rows?: number;
+  data_points?: number;
   change_percent: number | null;
   change_direction: 'up' | 'down' | 'neutral' | null;
-  breakdown_by_dimension: Record<string, Array<{ key: string; value: number }>>;
-  time_series: Array<{ date: string; value: number }> | null;
+  breakdown_by_dimension: Record<
+    string,
+    Array<{ key: string; value: number; source_rows?: number }>
+  >;
+  time_series: Array<{ date: string; value: number; source_rows?: number }> | null;
 };
 
 export type MetricCalculation = {

@@ -15,9 +15,11 @@ import {
 import GaugeComponent from 'react-gauge-component';
 import { formatCompactNumber, getColorScheme, formatMetricValue } from '../format';
 import { WidgetShell, EmptyWidget } from './WidgetShell';
+import { RichTooltip } from './RichTooltip';
 import type { WidgetRenderProps } from './widgetTypes';
+import { useOptionalDashboardFilters } from '../../../contexts/DashboardFilterContext';
 
-export function ScatterChartWidget({ widget, calcs, calcsAllTime }: WidgetRenderProps) {
+export function ScatterChartWidget({ widget, calcs, calcsAllTime, metrics }: WidgetRenderProps) {
   const [xMid, yMid] = widget.metric_ids;
   const xCalc = xMid ? calcsAllTime?.[xMid] ?? calcs[xMid] : undefined;
   const yCalc = yMid ? calcsAllTime?.[yMid] ?? calcs[yMid] : undefined;
@@ -42,7 +44,7 @@ export function ScatterChartWidget({ widget, calcs, calcsAllTime }: WidgetRender
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="x" type="number" tick={{ fontSize: 11, fill: '#6b7280' }} />
             <YAxis dataKey="y" type="number" tick={{ fontSize: 11, fill: '#6b7280' }} />
-            <Tooltip />
+            <Tooltip content={(props) => <RichTooltip {...props} metrics={metrics} />} />
             <Scatter data={points} fill={colors.primary} />
           </ScatterChart>
         </ResponsiveContainer>
@@ -119,7 +121,7 @@ export function RadialBarWidget({ widget, calcs, metrics }: WidgetRenderProps) {
   );
 }
 
-export function FunnelChartWidget({ widget, calcs }: WidgetRenderProps) {
+export function FunnelChartWidget({ widget, calcs, metrics }: WidgetRenderProps) {
   const metricId = widget.metric_ids[0];
   const calc = metricId ? calcs[metricId] : undefined;
   const dimId = widget.dimension_ids[0];
@@ -137,12 +139,17 @@ export function FunnelChartWidget({ widget, calcs }: WidgetRenderProps) {
     value: b.value,
     fill: colors.palette[i % colors.palette.length],
   }));
+  const meta = metricId ? metrics[metricId] : undefined;
   return (
     <WidgetShell title={widget.title} subtitle={widget.subtitle} insight={widget.insight}>
       <div className="h-72 w-full">
         <ResponsiveContainer>
           <FunnelChart>
-            <Tooltip />
+            <Tooltip
+              content={(props) => (
+                <RichTooltip {...props} defaultMetric={meta} metrics={metrics} />
+              )}
+            />
             <Funnel dataKey="value" data={data} isAnimationActive={false}>
               <LabelList position="right" fill="#374151" stroke="none" dataKey="name" />
             </Funnel>
@@ -156,6 +163,19 @@ export function FunnelChartWidget({ widget, calcs }: WidgetRenderProps) {
 export function HeatmapGridWidget({ widget, calcs, metrics }: WidgetRenderProps) {
   const colors = getColorScheme(widget.chart_config.color_scheme);
   const dimId = widget.dimension_ids[0];
+  const filters = useOptionalDashboardFilters();
+  const activeRowValue =
+    filters && dimId ? filters.getActiveValueForDimension(dimId) : null;
+  const handleRowClick =
+    filters && dimId
+      ? (rowKey: string) =>
+          filters.toggleFilter({
+            dimension: dimId,
+            value: rowKey,
+            label: rowKey,
+            sourceWidgetId: widget.id,
+          })
+      : undefined;
 
   const series = widget.metric_ids
     .map((mid) => {
@@ -211,33 +231,54 @@ export function HeatmapGridWidget({ widget, calcs, metrics }: WidgetRenderProps)
               </tr>
             </thead>
             <tbody>
-              {rows.map((cat) => (
-                <tr key={cat}>
-                  <th className="pr-3 text-right text-[11px] font-medium text-vizme-navy">
-                    {cat}
-                  </th>
-                  {series.map((s) => {
-                    const point = s.breakdown.find((b) => b.key === cat);
-                    const v = point?.value ?? 0;
-                    const ratio = v / (maxByMetric.get(s.metricId) ?? 1);
-                    return (
-                      <td
-                        key={s.metricId}
-                        className="rounded-lg px-3 py-2 text-center font-mono"
-                        style={{
-                          background: colors.primary,
-                          opacity: v === 0 ? 0.05 : 0.2 + ratio * 0.8,
-                          color: ratio > 0.5 ? '#fff' : '#1e2a44',
-                        }}
-                      >
-                        {v === 0 ? '—' : formatCompactNumber(v)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+              {rows.map((cat) => {
+                const isActive = activeRowValue === cat;
+                const isInactive = activeRowValue !== null && activeRowValue !== cat;
+                return (
+                  <tr key={cat} className={isInactive ? 'opacity-40' : ''}>
+                    <th
+                      onClick={handleRowClick ? () => handleRowClick(cat) : undefined}
+                      className={[
+                        'pr-3 text-right text-[11px] font-medium text-vizme-navy',
+                        handleRowClick ? 'cursor-pointer hover:text-vizme-coral' : '',
+                        isActive ? 'text-vizme-coral' : '',
+                      ].join(' ')}
+                    >
+                      {cat}
+                    </th>
+                    {series.map((s) => {
+                      const point = s.breakdown.find((b) => b.key === cat);
+                      const v = point?.value ?? 0;
+                      const ratio = v / (maxByMetric.get(s.metricId) ?? 1);
+                      return (
+                        <td
+                          key={s.metricId}
+                          onClick={handleRowClick ? () => handleRowClick(cat) : undefined}
+                          className={[
+                            'rounded-lg px-3 py-2 text-center font-mono',
+                            handleRowClick ? 'cursor-pointer' : '',
+                          ].join(' ')}
+                          style={{
+                            background: colors.primary,
+                            opacity: v === 0 ? 0.05 : 0.2 + ratio * 0.8,
+                            color: ratio > 0.5 ? '#fff' : '#1e2a44',
+                          }}
+                          title={`${s.name}: ${formatCompactNumber(v)}`}
+                        >
+                          {v === 0 ? '—' : formatCompactNumber(v)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          {handleRowClick && dimId && (
+            <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-vizme-greyblue">
+              Click en una fila para filtrar por {dimId}
+            </p>
+          )}
         </div>
       </WidgetShell>
     );
@@ -250,15 +291,24 @@ export function HeatmapGridWidget({ widget, calcs, metrics }: WidgetRenderProps)
       <div className="grid grid-cols-[repeat(auto-fit,minmax(80px,1fr))] gap-2">
         {target.slice(0, 24).map((t) => {
           const ratio = t.value / max;
+          const isActive = activeRowValue === t.key;
+          const isInactive = activeRowValue !== null && activeRowValue !== t.key;
           return (
             <div
               key={t.key}
-              className="rounded-xl p-3 text-center"
+              onClick={handleRowClick ? () => handleRowClick(t.key) : undefined}
+              className={[
+                'rounded-xl p-3 text-center transition-all',
+                handleRowClick ? 'cursor-pointer hover:-translate-y-0.5' : '',
+                isInactive ? 'opacity-30' : '',
+                isActive ? 'ring-2 ring-vizme-coral ring-offset-2' : '',
+              ].join(' ')}
               style={{
                 background: colors.primary,
-                opacity: 0.2 + ratio * 0.8,
+                opacity: isInactive ? undefined : 0.2 + ratio * 0.8,
                 color: ratio > 0.5 ? '#fff' : '#1e2a44',
               }}
+              title={`${t.key}: ${formatCompactNumber(t.value)}`}
             >
               <p className="truncate text-[10px] font-medium uppercase tracking-wide">{t.key}</p>
               <p className="mt-1 font-mono text-sm">{formatCompactNumber(t.value)}</p>
@@ -266,6 +316,11 @@ export function HeatmapGridWidget({ widget, calcs, metrics }: WidgetRenderProps)
           );
         })}
       </div>
+      {handleRowClick && dimId && (
+        <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-vizme-greyblue">
+          Click en una celda para filtrar por {dimId}
+        </p>
+      )}
     </WidgetShell>
   );
 }

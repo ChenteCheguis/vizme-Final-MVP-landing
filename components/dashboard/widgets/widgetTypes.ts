@@ -23,4 +23,7 @@ export interface WidgetCardShellProps {
   insight?: string | null;
   children: React.ReactNode;
   className?: string;
+  // Sprint 4.3 P3 — bandera para resaltar visualmente cuando el filtro activo
+  // afecta a este widget (atenuamos el shell para señalar cross-filter).
+  dimmed?: boolean;
 }

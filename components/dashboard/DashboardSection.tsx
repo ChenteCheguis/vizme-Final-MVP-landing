@@ -18,6 +18,8 @@ import DashboardSkeleton from './DashboardSkeleton';
 import PeriodPicker from './PeriodPicker';
 import DashboardHealthBanner from './DashboardHealthBanner';
 import DashboardDiagnosticsModal from './DashboardDiagnosticsModal';
+import FilterBar from './FilterBar';
+import { DashboardFilterProvider } from '../../contexts/DashboardFilterContext';
 import type { MetricCalculationPeriod } from '../../lib/v5types';
 
 interface DashboardSectionProps {
@@ -269,72 +271,76 @@ export default function DashboardSection({ projectId, schemaId, reloadKey }: Das
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="space-y-1">
-          <p className="label-eyebrow">Dashboard editorial</p>
-          <p className="text-sm text-vizme-greyblue">
-            Sofisticación: <span className="font-semibold text-vizme-navy">{data.blueprint.sophistication_level}</span>{' '}
-            · {data.blueprint.total_widgets ?? 0} widgets · v{data.blueprint.version}
-          </p>
+    <DashboardFilterProvider>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="label-eyebrow">Dashboard editorial</p>
+            <p className="text-sm text-vizme-greyblue">
+              Sofisticación: <span className="font-semibold text-vizme-navy">{data.blueprint.sophistication_level}</span>{' '}
+              · {data.blueprint.total_widgets ?? 0} widgets · v{data.blueprint.version}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <PeriodPicker value={period} onChange={setPeriod} />
+            <button
+              type="button"
+              onClick={recalc}
+              disabled={busy === 'recalc'}
+              className="inline-flex items-center gap-1.5 rounded-full border border-vizme-navy/15 bg-white/70 px-3 py-1.5 text-xs font-medium text-vizme-navy transition-all hover:border-vizme-coral hover:text-vizme-coral disabled:opacity-50"
+            >
+              {busy === 'recalc' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              Refrescar
+            </button>
+            <button
+              type="button"
+              onClick={buildBlueprint}
+              disabled={busy === 'blueprint'}
+              className="inline-flex items-center gap-1.5 rounded-full border border-vizme-coral/40 bg-vizme-coral/5 px-3 py-1.5 text-xs font-medium text-vizme-coral transition-all hover:bg-vizme-coral hover:text-white disabled:opacity-50"
+            >
+              {busy === 'blueprint' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+              Rediseñar
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <PeriodPicker value={period} onChange={setPeriod} />
-          <button
-            type="button"
-            onClick={recalc}
-            disabled={busy === 'recalc'}
-            className="inline-flex items-center gap-1.5 rounded-full border border-vizme-navy/15 bg-white/70 px-3 py-1.5 text-xs font-medium text-vizme-navy transition-all hover:border-vizme-coral hover:text-vizme-coral disabled:opacity-50"
-          >
-            {busy === 'recalc' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-            Refrescar
-          </button>
-          <button
-            type="button"
-            onClick={buildBlueprint}
-            disabled={busy === 'blueprint'}
-            className="inline-flex items-center gap-1.5 rounded-full border border-vizme-coral/40 bg-vizme-coral/5 px-3 py-1.5 text-xs font-medium text-vizme-coral transition-all hover:bg-vizme-coral hover:text-white disabled:opacity-50"
-          >
-            {busy === 'blueprint' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
-            Rediseñar
-          </button>
-        </div>
+
+        {actionError && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-800">
+            {actionError}
+          </div>
+        )}
+
+        {health && health.status !== 'complete' && (
+          <DashboardHealthBanner
+            health={health}
+            onRetry={handleRetry}
+            onShowDiagnostics={() => setDiagnosticsOpen(true)}
+            retrying={retry.busy}
+          />
+        )}
+
+        <FilterBar />
+
+        <DashboardRenderer
+          blueprint={data.blueprint}
+          metricsById={data.metricsById}
+          calcsByMetricPeriod={data.calcsByMetricPeriod}
+          insightsByPage={data.insightsByPage}
+          period={period}
+          onRequestInsights={generateInsights}
+          insightsLoading={busy === 'insights'}
+        />
+
+        {health && (
+          <DashboardDiagnosticsModal
+            open={diagnosticsOpen}
+            onClose={() => setDiagnosticsOpen(false)}
+            health={health}
+            onRetry={handleRetry}
+            retrying={retry.busy}
+          />
+        )}
       </div>
-
-      {actionError && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-800">
-          {actionError}
-        </div>
-      )}
-
-      {health && health.status !== 'complete' && (
-        <DashboardHealthBanner
-          health={health}
-          onRetry={handleRetry}
-          onShowDiagnostics={() => setDiagnosticsOpen(true)}
-          retrying={retry.busy}
-        />
-      )}
-
-      <DashboardRenderer
-        blueprint={data.blueprint}
-        metricsById={data.metricsById}
-        calcsByMetricPeriod={data.calcsByMetricPeriod}
-        insightsByPage={data.insightsByPage}
-        period={period}
-        onRequestInsights={generateInsights}
-        insightsLoading={busy === 'insights'}
-      />
-
-      {health && (
-        <DashboardDiagnosticsModal
-          open={diagnosticsOpen}
-          onClose={() => setDiagnosticsOpen(false)}
-          health={health}
-          onRetry={handleRetry}
-          retrying={retry.busy}
-        />
-      )}
-    </div>
+    </DashboardFilterProvider>
   );
 }
